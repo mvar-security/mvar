@@ -203,6 +203,7 @@ MVAR implements **3 deterministic security layers** grounded in published resear
 - Full evaluation traces
 - QSEAL-signed decisions (optional)
 
+**System architecture diagrams:** [ARCHITECTURE.md](ARCHITECTURE.md)  
 **Architectural lineage:** [DESIGN_LINEAGE.md](DESIGN_LINEAGE.md)
 
 ---
