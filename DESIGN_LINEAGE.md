@@ -53,9 +53,9 @@ MVAR builds on 40+ years of research in formal security methods:
 
 ## Architectural Analogue
 
-MVAR shares structural primitives with our prior work on MIRRA EOS agent identity continuity:
+MVAR shares structural primitives with prior work on agent identity continuity:
 
-| Primitive | MIRRA EOS (Identity Domain) | MVAR (Execution Domain) |
+| Primitive | Identity Continuity (Identity Domain) | MVAR (Execution Domain) |
 |-----------|----------------------------|------------------------|
 | **Provenance tracking** | Scroll chains (session lineage) | Provenance graphs (tool-call lineage) |
 | **Policy enforcement** | Constitutional constraints | Sink policy rules |

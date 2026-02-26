@@ -2,7 +2,7 @@
 MVAR Decision Ledger
 
 Append-only ledger for MVAR policy decisions and user overrides.
-Uses existing scroll + QSEAL infrastructure from MIRRA EOS.
+Uses existing scroll + QSEAL infrastructure from prior MVAR security work.
 
 Architecture:
 - Decision Scrolls: BLOCK/STEP_UP/ALLOW decisions (append-only)
