@@ -27,7 +27,7 @@ jobs:
 
       - name: Generate CycloneDX SBOM
         run: |
-          cyclonedx-py requirements --input-file requirements.txt --output-file sbom.cdx.json --output-format JSON
+          cyclonedx-py requirements requirements.txt -o sbom.cdx.json --of JSON
           sha256sum sbom.cdx.json > sbom.cdx.sha256
 
       - name: Emit provenance statement
