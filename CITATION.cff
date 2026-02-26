@@ -1,0 +1,32 @@
+cff-version: 1.2.0
+title: "MVAR: MIRRA verified agent runtime"
+message: "If you use this software, please cite it using the metadata below."
+type: software
+authors:
+  - family-names: Cohen
+    given-names: Shawn
+repository-code: "https://github.com/mvar-security/mvar"
+url: "https://github.com/mvar-security/mvar"
+license: Apache-2.0
+version: "0.1.0"
+date-released: "2026-02-27"
+abstract: >
+  A deterministic enforcement runtime for mitigating prompt-injection-driven
+  tool misuse in LLM agent systems, combining information-flow control,
+  capability constraints, sink policy evaluation, and cryptographic
+  provenance auditability.
+keywords:
+  - llm security
+  - prompt injection
+  - agent runtime security
+  - information flow control
+  - capability security
+  - provenance tracking
+preferred-citation:
+  type: software
+  authors:
+    - family-names: Cohen
+      given-names: Shawn
+  title: "MVAR: MIRRA verified agent runtime"
+  year: 2026
+  url: "https://github.com/mvar-security/mvar"

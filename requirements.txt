@@ -1,0 +1,10 @@
+# MVAR — MIRRA Verified Agent Runtime
+# Production dependencies with pinned versions
+
+# Core MIRRA dependencies (from parent project)
+# These are required for Entry 500 SDK and QSEAL
+numpy>=1.24.0,<3.0.0
+cryptography>=41.0.0,<47.0.0
+
+# Optional: For development/testing only
+# pytest>=7.4.0,<8.0.0  # Uncomment for testing

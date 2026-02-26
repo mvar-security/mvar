@@ -1,0 +1,34 @@
+# Python artifacts
+__pycache__/
+*.py[cod]
+*.so
+
+# Virtual environments
+.venv/
+.repro_venv/
+venv/
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+.pytest_cache/
+
+# Runtime and local data
+data/
+*.jsonl
+artifacts/
+
+# Keys and secrets
+keys/
+*.pem
+*.key
+*.pub
+hmac_key.bin
+
+# Local editor/system noise
+.DS_Store
+
+# Internal documentation (not for public release)
+docs/internal/
+docs/strategy/

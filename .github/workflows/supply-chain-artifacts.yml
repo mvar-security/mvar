@@ -1,0 +1,57 @@
+name: Supply Chain Artifacts
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["main"]
+
+jobs:
+  sbom-and-provenance:
+    name: SBOM + Provenance Artifacts
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install build tooling
+        run: |
+          python -m pip install -U pip setuptools wheel
+          python -m pip install cyclonedx-bom
+
+      - name: Generate CycloneDX SBOM
+        run: |
+          cyclonedx-py requirements --input-file requirements.txt --output-file sbom.cdx.json --output-format JSON
+          sha256sum sbom.cdx.json > sbom.cdx.sha256
+
+      - name: Emit provenance statement
+        run: |
+          cat > provenance.statement.json <<EOF
+          {
+            "repository": "${{ github.repository }}",
+            "commit": "${{ github.sha }}",
+            "workflow": "${{ github.workflow }}",
+            "run_id": "${{ github.run_id }}",
+            "generated_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "artifacts": [
+              "sbom.cdx.json",
+              "sbom.cdx.sha256"
+            ]
+          }
+          EOF
+          sha256sum provenance.statement.json > provenance.statement.sha256
+
+      - name: Upload supply-chain artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: supply-chain-artifacts
+          path: |
+            sbom.cdx.json
+            sbom.cdx.sha256
+            provenance.statement.json
+            provenance.statement.sha256

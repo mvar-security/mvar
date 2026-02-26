@@ -1,0 +1,196 @@
+# MVAR Decision Ledger Scroll Schema
+# Purpose: JSON Schema for MVAR Decision, Override, and Expiry scrolls
+# Format: JSON Schema Draft 2020-12
+#
+# Scroll Types:
+# - decision: Record of a policy decision (BLOCK/STEP_UP/ALLOW)
+# - override: User-approved temporary exception
+# - expiry: Revocation of an override scroll
+
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://mvar.dev/schemas/decision_scroll_schema.yaml"
+title: "MVAR Decision Scroll Schema"
+description: "Schema for MVAR decision ledger scrolls with cryptographic signatures"
+
+type: object
+required:
+  - scroll_id
+  - scroll_type
+  - timestamp
+  - meta_hash
+  - qseal_signature
+  - qseal_algorithm
+
+properties:
+  scroll_id:
+    type: string
+    description: "Unique scroll identifier"
+    pattern: "^MVAR_(DEC|OVR|EXP)_[0-9]{8}T[0-9]{6}Z_[a-f0-9]{8}$"
+    examples:
+      - "MVAR_DEC_20260224T120000Z_a1b2c3d4"
+      - "MVAR_OVR_20260224T120500Z_e5f6g7h8"
+      - "MVAR_EXP_20260224T121000Z_i9j0k1l2"
+
+  scroll_type:
+    type: string
+    enum: ["decision", "override", "expiry"]
+    description: "Type of scroll entry"
+
+  timestamp:
+    type: string
+    format: date-time
+    description: "ISO 8601 UTC timestamp"
+    examples: ["2026-02-24T12:00:00Z"]
+
+  # Decision-specific fields (required when scroll_type == "decision")
+  decision_outcome:
+    type: string
+    enum: ["BLOCK", "STEP_UP", "ALLOW"]
+    description: "Policy decision outcome (decision scrolls only)"
+
+  sink_target:
+    type: object
+    description: "Sink target information (decision scrolls only)"
+    required:
+      - tool
+      - action
+      - target_hash
+    properties:
+      tool:
+        type: string
+        description: "Tool name (e.g., 'bash', 'file_write')"
+      action:
+        type: string
+        description: "Action name (e.g., 'exec', 'write')"
+      target_hash:
+        type: string
+        pattern: "^[a-f0-9]{16}$"
+        description: "SHA-256[:16] hash of target (not raw target for privacy)"
+
+  provenance_node_id:
+    type: string
+    description: "Provenance graph node ID (decision scrolls only)"
+
+  principal_id:
+    type: string
+    description: "Principal identifier for decision/override isolation"
+
+  reason:
+    type: string
+    description: "Human-readable reason for decision (decision scrolls only)"
+
+  evaluation_trace:
+    type: array
+    items:
+      type: string
+    description: "Full evaluation trace (decision scrolls only)"
+
+  # Override-specific fields (required when scroll_type == "override")
+  parent_decision_id:
+    type: string
+    pattern: "^MVAR_DEC_[0-9]{8}T[0-9]{6}Z_[a-f0-9]{8}$"
+    description: "Decision scroll this override references (override scrolls only)"
+
+  match_criteria:
+    type: object
+    description: "Matching criteria for override (override scrolls only)"
+    required:
+      - tool
+      - action
+      - target_hash
+      - principal_id
+      - scope
+    properties:
+      tool:
+        type: string
+      action:
+        type: string
+      target_hash:
+        type: string
+        pattern: "^[a-f0-9]{16}$"
+      principal_id:
+        type: string
+        description: "Principal identifier that owns this override scope"
+      scope:
+        type: string
+        enum: ["exact"]
+        description: "Scope of override (Phase 1: exact only)"
+
+  ttl_expiry:
+    type: string
+    format: date-time
+    description: "TTL expiration timestamp (override scrolls only)"
+
+  user_approved:
+    type: boolean
+    description: "User approval flag (override scrolls only)"
+
+  # Expiry-specific fields (required when scroll_type == "expiry")
+  revoked_override_id:
+    type: string
+    pattern: "^MVAR_OVR_[0-9]{8}T[0-9]{6}Z_[a-f0-9]{8}$"
+    description: "Override scroll being revoked (expiry scrolls only)"
+
+  # QSEAL cryptographic fields (required for all scroll types)
+  meta_hash:
+    type: string
+    pattern: "^[a-f0-9]{64}$"
+    description: "SHA-256 hash of canonical scroll metadata"
+
+  qseal_signature:
+    type: string
+    description: "Cryptographic signature (ed25519 or hmac-sha256)"
+
+  qseal_algorithm:
+    type: string
+    enum: ["ed25519", "hmac-sha256", "none"]
+    description: "Signature algorithm used"
+
+  qseal_verified:
+    type: boolean
+    description: "Signature verification status (added at verification time)"
+
+  # Optional lineage fields
+  qseal_prev_signature:
+    type: string
+    description: "Previous scroll's signature (for chain linking)"
+
+# Conditional validation rules
+allOf:
+  # Decision scrolls must have decision_outcome, sink_target, provenance_node_id
+  - if:
+      properties:
+        scroll_type:
+          const: "decision"
+    then:
+      required:
+        - decision_outcome
+        - sink_target
+        - provenance_node_id
+        - principal_id
+        - reason
+        - evaluation_trace
+
+  # Override scrolls must have parent_decision_id, match_criteria, ttl_expiry
+  - if:
+      properties:
+        scroll_type:
+          const: "override"
+    then:
+      required:
+        - parent_decision_id
+        - match_criteria
+        - principal_id
+        - ttl_expiry
+        - user_approved
+
+  # Expiry scrolls must have revoked_override_id
+  - if:
+      properties:
+        scroll_type:
+          const: "expiry"
+    then:
+      required:
+        - revoked_override_id
+
+additionalProperties: false

@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/mvar-security/mvar/conformance/community_attack_vector_schema.json",
+  "title": "MVAR Community Attack Vector Submission",
+  "type": "object",
+  "required": ["suite_name", "vectors"],
+  "properties": {
+    "suite_name": {"type": "string", "minLength": 1},
+    "vectors": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "description", "payload", "sink", "expected_outcome"],
+        "properties": {
+          "id": {"type": "string", "minLength": 1},
+          "description": {"type": "string", "minLength": 1},
+          "payload": {"type": "string", "minLength": 1},
+          "sink": {
+            "type": "object",
+            "required": ["tool", "action"],
+            "properties": {
+              "tool": {"type": "string", "minLength": 1},
+              "action": {"type": "string", "minLength": 1},
+              "target": {"type": "string"}
+            },
+            "additionalProperties": false
+          },
+          "expected_outcome": {
+            "type": "string",
+            "enum": ["ALLOW", "BLOCK", "STEP_UP"]
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}
