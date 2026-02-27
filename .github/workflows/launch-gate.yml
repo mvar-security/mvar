@@ -35,3 +35,44 @@ jobs:
 
       - name: Run agent testbed trilogy gate
         run: python ./scripts/check_agent_testbed_trilogy.py
+
+  openai-deep-integration:
+    name: OpenAI Deep Integration (Python 3.12 + Docker smoke)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install package + test deps
+        run: |
+          python -m pip install -U pip setuptools wheel
+          python -m pip install .
+          python -m pip install pytest
+
+      - name: Run OpenAI deep integration tests
+        run: pytest -q tests/test_openai_deep_integration.py
+
+      - name: Build OpenAI Docker demo image
+        run: |
+          docker build \
+            -f examples/deployment/openai_docker/Dockerfile \
+            -t mvar-openai-runtime:ci \
+            .
+
+      - name: Run OpenAI Docker smoke
+        run: |
+          set -euo pipefail
+          docker run --rm \
+            -e MVAR_REQUIRE_EXECUTION_TOKEN=1 \
+            -e MVAR_EXEC_TOKEN_SECRET=ci_openai_secret \
+            -e MVAR_FAIL_CLOSED=1 \
+            mvar-openai-runtime:ci | tee /tmp/openai-docker-smoke.log
+          grep -q "total_calls=2" /tmp/openai-docker-smoke.log
+          grep -q "executed_calls=1" /tmp/openai-docker-smoke.log
+          grep -q "blocked_calls=1" /tmp/openai-docker-smoke.log

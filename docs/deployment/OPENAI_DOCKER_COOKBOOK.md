@@ -13,8 +13,8 @@ Run an OpenAI-style tool-dispatch loop with MVAR enforcement enabled inside Dock
 ## 1) Build image
 
 ```bash
-cd examples/deployment/openai_docker
-docker build -t mvar-openai-runtime:local .
+cd <repo-root>
+docker build -f examples/deployment/openai_docker/Dockerfile -t mvar-openai-runtime:local .
 ```
 
 ## 2) Run container

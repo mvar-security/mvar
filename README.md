@@ -307,6 +307,7 @@ python scripts/check_sink_registration_coverage.py  # sink registration coverage
 
 **Full installation guide:** [INSTALL.md](INSTALL.md)
 **Milestone 1 cookbook (Docker/OpenAI):** [docs/deployment/OPENAI_DOCKER_COOKBOOK.md](docs/deployment/OPENAI_DOCKER_COOKBOOK.md)
+**Milestone 1 CI gate:** `.github/workflows/launch-gate.yml` (`OpenAI Deep Integration` job)
 
 ## Adapter Conformance
 
