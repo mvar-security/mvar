@@ -245,6 +245,8 @@ CI wiring:
 
 Execution tokens can run in strict one-time mode to prevent replay. In this mode, each token nonce is consumed on first successful authorization; subsequent reuse is blocked.
 
+Authorization now supports a pre-evaluated decision witness path for adapters (`pre_evaluated_decision`) so policy evaluation and execution authorization stay bound without double evaluation.
+
 Environment flags:
 
 ```bash

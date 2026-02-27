@@ -11,6 +11,11 @@
   - Replayed tokens are deterministically rejected.
   - Added dedicated replay-defense regression coverage.
 
+- Added **execution-witness binding path** for adapters.
+  - `authorize_execution(..., pre_evaluated_decision=...)` validates tool/action/target/provenance/policy-hash binding.
+  - Prevents policy re-evaluation drift between planning and execution boundaries.
+  - Added regression tests for witness mismatch blocking and composition double-count prevention.
+
 - Expanded **regression gate coverage** in CI.
   - `launch-gate.yml` now includes composition-risk regression tests in addition to existing launch-gate and trilogy checks.
 

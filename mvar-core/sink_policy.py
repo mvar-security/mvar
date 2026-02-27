@@ -142,6 +142,7 @@ class PolicyDecision:
     qseal_signature: Optional[Dict[str, str]] = None
     decision_id: Optional[str] = None  # NEW: Ledger decision ID (if recorded)
     policy_hash: str = ""
+    target_hash: str = ""
     execution_token: Optional[Dict[str, Any]] = None
 
     def to_dict(self) -> Dict[str, Any]:
@@ -167,6 +168,7 @@ class PolicyDecision:
             "confidentiality_check": self.confidentiality_check,
             "evaluation_trace": self.evaluation_trace,
             "policy_hash": self.policy_hash,
+            "target_hash": self.target_hash,
             "timestamp": self.timestamp,
             "qseal_signature": self.qseal_signature,
             "execution_token": self.execution_token,
@@ -794,27 +796,55 @@ class SinkPolicy:
         provenance_node_id: str,
         parameters: Optional[Dict[str, Any]] = None,
         execution_token: Optional[Dict[str, Any]] = None,
+        pre_evaluated_decision: Optional[PolicyDecision] = None,
     ) -> PolicyDecision:
         """
         Evaluate policy and, when enabled, require a valid execution token.
         Adapters should call this instead of direct `evaluate()` to prevent
         policy-to-execution drift.
         """
-        decision = self.evaluate(
-            tool=tool,
-            action=action,
-            target=target,
-            provenance_node_id=provenance_node_id,
-            parameters=parameters,
-        )
+        expected_target_hash = hashlib.sha256(target.encode("utf-8")).hexdigest() if target else ""
+        if pre_evaluated_decision is not None:
+            decision = pre_evaluated_decision
+            decision.evaluation_trace.append("pre_evaluated_decision_used")
+
+            mismatch_reasons = []
+            if decision.sink.tool != tool:
+                mismatch_reasons.append("tool")
+            if decision.sink.action != action:
+                mismatch_reasons.append("action")
+            if decision.provenance_node.node_id != provenance_node_id:
+                mismatch_reasons.append("provenance_node_id")
+            if decision.target_hash and decision.target_hash != expected_target_hash:
+                mismatch_reasons.append("target_hash")
+            current_policy_hash = self._compute_policy_hash()
+            if decision.policy_hash and decision.policy_hash != current_policy_hash:
+                mismatch_reasons.append("policy_hash")
+
+            if mismatch_reasons:
+                decision.outcome = PolicyOutcome.BLOCK
+                decision.reason = "Pre-evaluated decision mismatch: " + ",".join(mismatch_reasons)
+                decision.evaluation_trace.append("pre_evaluated_decision_mismatch → BLOCK")
+                return decision
+        else:
+            decision = self.evaluate(
+                tool=tool,
+                action=action,
+                target=target,
+                provenance_node_id=provenance_node_id,
+                parameters=parameters,
+            )
+        token = execution_token
+        if token is None and pre_evaluated_decision is not None:
+            token = decision.execution_token
         if self.require_execution_token and decision.outcome in (PolicyOutcome.ALLOW, PolicyOutcome.STEP_UP):
-            if not execution_token:
+            if not token:
                 decision.outcome = PolicyOutcome.BLOCK
                 decision.reason = "Execution token required but missing"
                 decision.evaluation_trace.append("execution_token_required_missing → BLOCK")
                 return decision
             if not self.verify_execution_token(
-                execution_token,
+                token,
                 tool=tool,
                 action=action,
                 target=target,
@@ -825,7 +855,7 @@ class SinkPolicy:
                 decision.reason = "Execution token invalid"
                 decision.evaluation_trace.append("execution_token_invalid → BLOCK")
             else:
-                self._consume_execution_token_nonce(execution_token)
+                self._consume_execution_token_nonce(token)
                 decision.evaluation_trace.append("execution_token_consumed")
         return decision
 
@@ -889,7 +919,8 @@ class SinkPolicy:
             integrity_check=provenance_node.integrity.value,
             confidentiality_check=provenance_node.confidentiality.value,
             evaluation_trace=evaluation_trace,
-            policy_hash=policy_hash
+            policy_hash=policy_hash,
+            target_hash=hashlib.sha256(target.encode("utf-8")).hexdigest() if target else "",
         )
 
         if self.composition_risk_engine and decision.outcome in (PolicyOutcome.ALLOW, PolicyOutcome.STEP_UP):

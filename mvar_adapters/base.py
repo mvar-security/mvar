@@ -78,6 +78,7 @@ class MVARExecutionAdapter:
         provenance_node_id: str,
         parameters: Optional[Dict[str, Any]] = None,
         execution_token: Optional[Dict[str, Any]] = None,
+        pre_evaluated_decision: Optional[PolicyDecision] = None,
     ) -> PolicyDecision:
         return self.policy.authorize_execution(
             tool=tool,
@@ -86,6 +87,7 @@ class MVARExecutionAdapter:
             provenance_node_id=provenance_node_id,
             parameters=parameters,
             execution_token=execution_token,
+            pre_evaluated_decision=pre_evaluated_decision,
         )
 
     def enforce_and_execute(
@@ -119,6 +121,7 @@ class MVARExecutionAdapter:
             provenance_node_id,
             parameters=parameters,
             execution_token=token,
+            pre_evaluated_decision=decision,
         )
 
         outcome_value = getattr(auth.outcome, "value", str(auth.outcome))
