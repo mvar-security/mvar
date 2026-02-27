@@ -10,6 +10,7 @@
   - Execution-token nonces are consumed on first successful authorization.
   - Replayed tokens are deterministically rejected.
   - Added dedicated replay-defense regression coverage.
+  - Added optional persisted nonce store (`MVAR_EXECUTION_TOKEN_NONCE_PERSIST=1`) so replay protection survives policy/runtime restart.
 
 - Added **execution-witness binding path** for adapters.
   - `authorize_execution(..., pre_evaluated_decision=...)` validates tool/action/target/provenance/policy-hash binding.

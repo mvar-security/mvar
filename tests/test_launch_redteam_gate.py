@@ -5,7 +5,7 @@ Launch red-team gate: adversarial invariants that should never regress.
 from pathlib import Path
 
 import test_common  # noqa: F401
-from capability import CapabilityRuntime, build_shell_tool
+from capability import CapabilityGrant, CapabilityRuntime, CapabilityType, build_shell_tool
 from decision_ledger import MVARDecisionLedger
 from provenance import ProvenanceGraph, provenance_external_doc, provenance_user_input
 from sink_policy import PolicyOutcome, SinkPolicy, register_common_sinks
@@ -167,6 +167,77 @@ def test_execution_token_fail_closed_without_secret(monkeypatch):
     )
     assert decision.outcome == PolicyOutcome.BLOCK
     assert "execution token secret missing" in decision.reason.lower()
+
+
+def test_execution_token_replay_persists_across_policy_restart(monkeypatch, tmp_path: Path):
+    nonce_store = str(tmp_path / "consumed_execution_token_nonces.jsonl")
+    monkeypatch.setenv("MVAR_REQUIRE_EXECUTION_TOKEN", "1")
+    monkeypatch.setenv("MVAR_EXECUTION_TOKEN_ONE_TIME", "1")
+    monkeypatch.setenv("MVAR_EXECUTION_TOKEN_NONCE_PERSIST", "1")
+    monkeypatch.setenv("MVAR_EXEC_TOKEN_NONCE_STORE", nonce_store)
+    monkeypatch.setenv("MVAR_EXEC_TOKEN_SECRET", "launch_gate_token_secret")
+    monkeypatch.setenv("MVAR_FAIL_CLOSED", "1")
+    monkeypatch.setenv("MVAR_ENABLE_LEDGER", "0")
+    monkeypatch.setenv("MVAR_ENABLE_TRUST_ORACLE", "0")
+
+    # First policy instance consumes token.
+    graph_a = ProvenanceGraph(enable_qseal=False)
+    runtime_a = CapabilityRuntime()
+    runtime_a.register_tool(
+        tool_name="filesystem",
+        capabilities=[
+            CapabilityGrant(
+                cap_type=CapabilityType.FILESYSTEM_READ,
+                allowed_targets=["/tmp/**", "/private/tmp/**"],
+            ),
+        ],
+    )
+    policy_a = SinkPolicy(runtime_a, graph_a, enable_qseal=False)
+    register_common_sinks(policy_a)
+    node_a = provenance_user_input(graph_a, "read tmp report")
+
+    decision_a = policy_a.evaluate(
+        tool="filesystem",
+        action="read",
+        target="/tmp/report.txt",
+        provenance_node_id=node_a.node_id,
+    )
+    assert decision_a.execution_token is not None
+    allow_a = policy_a.authorize_execution(
+        tool="filesystem",
+        action="read",
+        target="/tmp/report.txt",
+        provenance_node_id=node_a.node_id,
+        execution_token=decision_a.execution_token,
+        pre_evaluated_decision=decision_a,
+    )
+    assert allow_a.outcome == PolicyOutcome.ALLOW
+
+    # New policy instance should still block replay of same token nonce.
+    graph_b = ProvenanceGraph(enable_qseal=False)
+    runtime_b = CapabilityRuntime()
+    runtime_b.register_tool(
+        tool_name="filesystem",
+        capabilities=[
+            CapabilityGrant(
+                cap_type=CapabilityType.FILESYSTEM_READ,
+                allowed_targets=["/tmp/**", "/private/tmp/**"],
+            ),
+        ],
+    )
+    policy_b = SinkPolicy(runtime_b, graph_b, enable_qseal=False)
+    register_common_sinks(policy_b)
+
+    replay_b = policy_b.authorize_execution(
+        tool="filesystem",
+        action="read",
+        target="/tmp/report.txt",
+        provenance_node_id=node_a.node_id,
+        execution_token=decision_a.execution_token,
+        pre_evaluated_decision=decision_a,
+    )
+    assert replay_b.outcome == PolicyOutcome.BLOCK
+    assert "execution token invalid" in replay_b.reason.lower()
 
 
 def test_ledger_scrolls_include_principal_for_audit(monkeypatch, tmp_path: Path):

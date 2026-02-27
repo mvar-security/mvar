@@ -252,6 +252,8 @@ Environment flags:
 ```bash
 export MVAR_REQUIRE_EXECUTION_TOKEN=1
 export MVAR_EXECUTION_TOKEN_ONE_TIME=1   # default: enabled
+export MVAR_EXECUTION_TOKEN_NONCE_PERSIST=1
+export MVAR_EXEC_TOKEN_NONCE_STORE=data/mvar_execution_token_nonces.jsonl
 ```
 
 Reference doc: [docs/AGENT_TESTBED.md](docs/AGENT_TESTBED.md)

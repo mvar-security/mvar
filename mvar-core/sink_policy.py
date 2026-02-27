@@ -51,6 +51,7 @@ try:
     from .qseal import QSealSigner
     from .decision_ledger import MVARDecisionLedger
     from .composition_risk import CompositionRiskEngine
+    from .execution_token_nonce_store import ExecutionTokenNonceStore
 except ImportError:
     from capability import CapabilityRuntime, CapabilityType
     from provenance import (
@@ -62,6 +63,7 @@ except ImportError:
     from qseal import QSealSigner
     from decision_ledger import MVARDecisionLedger
     from composition_risk import CompositionRiskEngine
+    from execution_token_nonce_store import ExecutionTokenNonceStore
 
 
 class SinkRisk(Enum):
@@ -247,6 +249,11 @@ class SinkPolicy:
         self.require_execution_token = os.getenv("MVAR_REQUIRE_EXECUTION_TOKEN", "0") == "1"
         self.execution_token_ttl_seconds = int(os.getenv("MVAR_EXECUTION_TOKEN_TTL_SECONDS", "300"))
         self.execution_token_one_time = os.getenv("MVAR_EXECUTION_TOKEN_ONE_TIME", "1") == "1"
+        self.execution_token_nonce_persist = os.getenv("MVAR_EXECUTION_TOKEN_NONCE_PERSIST", "0") == "1"
+        self.execution_token_nonce_store_path = os.getenv(
+            "MVAR_EXEC_TOKEN_NONCE_STORE",
+            "data/mvar_execution_token_nonces.jsonl",
+        )
         self._execution_token_secret = os.getenv("MVAR_EXEC_TOKEN_SECRET", os.getenv("QSEAL_SECRET", "")).encode("utf-8")
         self.enable_composition_risk = os.getenv("MVAR_ENABLE_COMPOSITION_RISK", "0") == "1"
         self._secret_pattern = re.compile(
@@ -264,6 +271,14 @@ class SinkPolicy:
         # STEP_UP approvals registry
         self.step_up_approvals: Dict[str, StepUpApproval] = {}
         self._consumed_execution_token_nonces: Dict[str, datetime] = {}
+        self._execution_token_nonce_store = None
+        if self.execution_token_one_time and self.execution_token_nonce_persist:
+            try:
+                self._execution_token_nonce_store = ExecutionTokenNonceStore(self.execution_token_nonce_store_path)
+            except Exception as exc:
+                if self.fail_closed:
+                    raise RuntimeError(f"Execution token nonce store init failed: {exc}") from exc
+                self._execution_token_nonce_store = None
 
         # NEW: Decision ledger (feature-flagged, default OFF)
         # Note: Ledger is independent of enable_qseal (you can have ledger without QSEAL signatures)
@@ -386,6 +401,8 @@ class SinkPolicy:
         except Exception:
             expires = datetime.now(timezone.utc) + timedelta(seconds=max(self.execution_token_ttl_seconds, 1))
         self._consumed_execution_token_nonces[str(nonce)] = expires
+        if self._execution_token_nonce_store:
+            self._execution_token_nonce_store.consume(str(nonce), expires)
 
     def verify_execution_token(
         self,
@@ -407,6 +424,8 @@ class SinkPolicy:
                     return False
                 self._prune_consumed_execution_tokens()
                 if nonce in self._consumed_execution_token_nonces:
+                    return False
+                if self._execution_token_nonce_store and self._execution_token_nonce_store.is_consumed(nonce):
                     return False
             expires = datetime.fromisoformat(token["expires_at"].replace("Z", "+00:00"))
             if datetime.now(timezone.utc) >= expires:
