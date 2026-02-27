@@ -32,6 +32,8 @@ python -m pip install .
 - MCP
 - OpenClaw
 
+First-party wrappers for common agent frameworks. Planned (Phase 2): deeper framework integration packages and deployment cookbooks.
+
 See [docs/FIRST_PARTY_ADAPTERS.md](docs/FIRST_PARTY_ADAPTERS.md) for quickstarts and wrapper details.
 
 ### Run the Demo
@@ -173,7 +175,7 @@ MVAR's sink policy was evaluated against a 50-vector adversarial corpus spanning
 | Credential theft (AWS, SSH keys) | 4 | ✅ 4/4 blocked |
 | Novel corpus variants | 4 | ✅ 4/4 blocked |
 
-**Result:** Blocked all vectors in the current validation corpus under the current sink configuration and labeling policy.
+**Result:** Blocked every vector in the current validation corpus under the tested policy and sink configuration.
 
 **Scope:** This demonstrates consistent enforcement for this validation corpus. Not a proof of completeness against all possible attacks.
 
@@ -405,6 +407,8 @@ MVAR is a **policy enforcement layer**, not a detection system. It assumes untru
 - [ ] Deep LangChain / OpenAI / MCP integration packages + deployment cookbooks
 - [ ] STEP_UP user confirmation flow
 - [ ] Expanded attack corpus and external adversarial contributions
+
+Execution plan: [docs/PHASE2_INTEGRATION_DEPLOYMENT_PLAN.md](docs/PHASE2_INTEGRATION_DEPLOYMENT_PLAN.md)
 
 ### 🔨 Phase 3 (Weeks 4-5)
 - [ ] Formal verification (TLA+ spec)
