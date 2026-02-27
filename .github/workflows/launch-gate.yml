@@ -32,3 +32,6 @@ jobs:
 
       - name: Run launch gate
         run: ./scripts/launch-gate.sh
+
+      - name: Run agent testbed trilogy gate
+        run: python ./scripts/check_agent_testbed_trilogy.py
