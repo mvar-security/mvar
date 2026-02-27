@@ -209,6 +209,22 @@ What to look for in MVAR trace:
 - deterministic invariant line: `UNTRUSTED + CRITICAL -> BLOCK`
 - signed decision details: `qseal_algo`, `qseal_sig`
 
+### Trilogy Regression Gate (CI-Enforced)
+
+Every push/PR runs `scripts/check_agent_testbed_trilogy.py` to enforce:
+- `rag_injection` and `taint_laundering`: MVAR must block and prevent execution
+- `benign`: MVAR must allow execution
+- required trace markers (invariant, QSEAL fields, source/planner context)
+
+Run locally:
+
+```bash
+python3 ./scripts/check_agent_testbed_trilogy.py
+```
+
+CI wiring:
+- `.github/workflows/launch-gate.yml`
+
 Reference doc: [docs/AGENT_TESTBED.md](docs/AGENT_TESTBED.md)
 Showcase summary: [docs/ATTACK_VALIDATION_SHOWCASE.md](docs/ATTACK_VALIDATION_SHOWCASE.md)
 
