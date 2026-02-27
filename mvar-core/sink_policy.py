@@ -390,19 +390,50 @@ class SinkPolicy:
         for nonce in stale:
             self._consumed_execution_token_nonces.pop(nonce, None)
 
-    def _consume_execution_token_nonce(self, token: Dict[str, Any]) -> None:
+    def _consume_execution_token_nonce(
+        self,
+        token: Dict[str, Any],
+        tool: str,
+        action: str,
+        target: str,
+        provenance_node_id: str,
+        policy_hash: str,
+        decision_id: Optional[str] = None,
+    ) -> Optional[str]:
         if not self.execution_token_one_time:
-            return
+            return None
         nonce = token.get("nonce")
         if not nonce:
-            return
+            return None
         try:
             expires = datetime.fromisoformat(str(token.get("expires_at", "")).replace("Z", "+00:00"))
         except Exception:
             expires = datetime.now(timezone.utc) + timedelta(seconds=max(self.execution_token_ttl_seconds, 1))
         self._consumed_execution_token_nonces[str(nonce)] = expires
         if self._execution_token_nonce_store:
-            self._execution_token_nonce_store.consume(str(nonce), expires)
+            try:
+                self._execution_token_nonce_store.consume(str(nonce), expires)
+            except Exception as exc:
+                if self.fail_closed:
+                    raise RuntimeError(f"execution token nonce persistence failed: {exc}") from exc
+
+        nonce_scroll_id = None
+        if self.decision_ledger:
+            try:
+                nonce_scroll_id = self.decision_ledger.record_execution_token_nonce_consumed(
+                    token=token,
+                    tool=tool,
+                    action=action,
+                    target=target,
+                    provenance_node_id=provenance_node_id,
+                    policy_hash=policy_hash,
+                    principal_id=self.principal_id,
+                    parent_decision_id=decision_id,
+                )
+            except Exception as exc:
+                if self.fail_closed:
+                    raise RuntimeError(f"execution token nonce ledger write failed: {exc}") from exc
+        return nonce_scroll_id
 
     def verify_execution_token(
         self,
@@ -874,8 +905,27 @@ class SinkPolicy:
                 decision.reason = "Execution token invalid"
                 decision.evaluation_trace.append("execution_token_invalid → BLOCK")
             else:
-                self._consume_execution_token_nonce(token)
+                try:
+                    nonce_scroll_id = self._consume_execution_token_nonce(
+                        token=token,
+                        tool=tool,
+                        action=action,
+                        target=target,
+                        provenance_node_id=provenance_node_id,
+                        policy_hash=decision.policy_hash,
+                        decision_id=decision.decision_id,
+                    )
+                except Exception as exc:
+                    if self.fail_closed:
+                        decision.outcome = PolicyOutcome.BLOCK
+                        decision.reason = f"Fail-closed: execution token consume failure ({exc})"
+                        decision.evaluation_trace.append("execution_token_consume_failure → BLOCK")
+                        return decision
+                    nonce_scroll_id = None
+                    decision.evaluation_trace.append("execution_token_consume_failure_nonfatal")
                 decision.evaluation_trace.append("execution_token_consumed")
+                if nonce_scroll_id:
+                    decision.evaluation_trace.append(f"execution_token_nonce_scroll_id: {nonce_scroll_id}")
         return decision
 
     def _make_decision(

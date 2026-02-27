@@ -33,6 +33,38 @@ docker run --rm \
 - Critical untrusted call should be blocked.
 - Final line prints a batch summary with `executed_calls=1` and `blocked_calls=1`.
 
+## 3b) Replay persistence probe (restart-safe one-time tokens)
+
+To validate strict replay defense across container restarts:
+
+```bash
+mkdir -p /tmp/mvar-nonce-smoke
+
+docker run --rm \
+  -v /tmp/mvar-nonce-smoke:/var/mvar \
+  -e MVAR_REQUIRE_EXECUTION_TOKEN=1 \
+  -e MVAR_EXEC_TOKEN_SECRET=change_me_in_prod \
+  -e MVAR_EXECUTION_TOKEN_ONE_TIME=1 \
+  -e MVAR_EXECUTION_TOKEN_NONCE_PERSIST=1 \
+  -e MVAR_EXEC_TOKEN_NONCE_STORE=/var/mvar/consumed_nonces.jsonl \
+  mvar-openai-runtime:local \
+  python examples/deployment/openai_docker/replay_probe.py
+
+docker run --rm \
+  -v /tmp/mvar-nonce-smoke:/var/mvar \
+  -e MVAR_REQUIRE_EXECUTION_TOKEN=1 \
+  -e MVAR_EXEC_TOKEN_SECRET=change_me_in_prod \
+  -e MVAR_EXECUTION_TOKEN_ONE_TIME=1 \
+  -e MVAR_EXECUTION_TOKEN_NONCE_PERSIST=1 \
+  -e MVAR_EXEC_TOKEN_NONCE_STORE=/var/mvar/consumed_nonces.jsonl \
+  mvar-openai-runtime:local \
+  python examples/deployment/openai_docker/replay_probe.py
+```
+
+Expected:
+- first run prints `nonce_probe=ALLOW`
+- second run prints `nonce_probe=BLOCK`
+
 ## 4) Security assumptions
 - Container runtime hardening (read-only rootfs, dropped capabilities) is still required.
 - MVAR enforces sink boundaries; it does not replace OS sandboxing.

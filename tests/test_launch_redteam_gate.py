@@ -151,10 +151,10 @@ def test_execution_token_fail_closed_without_secret(monkeypatch):
     monkeypatch.delenv("MVAR_EXEC_TOKEN_SECRET", raising=False)
     monkeypatch.delenv("QSEAL_SECRET", raising=False)
 
-    graph = ProvenanceGraph(enable_qseal=False)
+    graph = ProvenanceGraph(enable_qseal=True)
     runtime = CapabilityRuntime()
     runtime.manifests["bash"] = build_shell_tool("bash", ["ls"], ["/tmp/**"])
-    policy = SinkPolicy(runtime, graph, enable_qseal=False)
+    policy = SinkPolicy(runtime, graph, enable_qseal=True)
     register_common_sinks(policy)
     node = provenance_user_input(graph, "list tmp")
 
@@ -238,6 +238,60 @@ def test_execution_token_replay_persists_across_policy_restart(monkeypatch, tmp_
     )
     assert replay_b.outcome == PolicyOutcome.BLOCK
     assert "execution token invalid" in replay_b.reason.lower()
+
+
+def test_execution_token_nonce_consumption_is_ledger_chain_linked(monkeypatch, tmp_path: Path):
+    ledger_path = str(tmp_path / "nonce_chain_ledger.jsonl")
+    nonce_store = str(tmp_path / "nonce_chain_store.jsonl")
+    monkeypatch.setenv("MVAR_ENABLE_LEDGER", "1")
+    monkeypatch.setenv("MVAR_ENABLE_TRUST_ORACLE", "0")
+    monkeypatch.setenv("MVAR_LEDGER_PATH", ledger_path)
+    monkeypatch.setenv("MVAR_REQUIRE_EXECUTION_TOKEN", "1")
+    monkeypatch.setenv("MVAR_EXECUTION_TOKEN_ONE_TIME", "1")
+    monkeypatch.setenv("MVAR_EXECUTION_TOKEN_NONCE_PERSIST", "1")
+    monkeypatch.setenv("MVAR_EXEC_TOKEN_NONCE_STORE", nonce_store)
+    monkeypatch.setenv("MVAR_EXEC_TOKEN_SECRET", "nonce_chain_secret")
+    monkeypatch.setenv("QSEAL_SECRET", "nonce_chain_qseal")
+    monkeypatch.setenv("MVAR_FAIL_CLOSED", "1")
+
+    graph = ProvenanceGraph(enable_qseal=True)
+    runtime = CapabilityRuntime()
+    runtime.manifests["bash"] = build_shell_tool("bash", ["ls"], ["/tmp/**"])
+    policy = SinkPolicy(runtime, graph, enable_qseal=True)
+    register_common_sinks(policy)
+    node = provenance_user_input(graph, "list tmp")
+
+    step_up = policy.evaluate(
+        tool="bash",
+        action="exec",
+        target="ls",
+        provenance_node_id=node.node_id,
+        parameters={"command": "ls /tmp"},
+    )
+    assert step_up.outcome == PolicyOutcome.STEP_UP
+    assert step_up.decision_id
+    assert step_up.execution_token is not None
+
+    authorized = policy.authorize_execution(
+        tool="bash",
+        action="exec",
+        target="ls",
+        provenance_node_id=node.node_id,
+        parameters={"command": "ls /tmp"},
+        execution_token=step_up.execution_token,
+        pre_evaluated_decision=step_up,
+    )
+    assert authorized.outcome == PolicyOutcome.STEP_UP
+    assert any("execution_token_nonce_scroll_id" in item for item in authorized.evaluation_trace)
+
+    ledger = MVARDecisionLedger(ledger_path=ledger_path, enable_qseal_signing=True)
+    scrolls = ledger._load_scrolls()
+    decision_scroll = next(s for s in scrolls if s.get("scroll_type") == "decision")
+    nonce_scroll = next(s for s in scrolls if s.get("scroll_type") == "token_nonce")
+
+    assert nonce_scroll.get("parent_decision_id") == decision_scroll["scroll_id"]
+    assert nonce_scroll.get("qseal_prev_signature") == decision_scroll.get("qseal_signature")
+    assert nonce_scroll.get("event") == "execution_token_nonce_consumed"
 
 
 def test_ledger_scrolls_include_principal_for_audit(monkeypatch, tmp_path: Path):

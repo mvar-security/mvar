@@ -79,3 +79,36 @@ jobs:
           grep -q "total_calls=2" /tmp/openai-docker-smoke.log
           grep -q "executed_calls=1" /tmp/openai-docker-smoke.log
           grep -q "blocked_calls=1" /tmp/openai-docker-smoke.log
+
+      - name: Assert nonce replay persistence across container restart
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/mvar-nonce-smoke
+          mkdir -p /tmp/mvar-nonce-smoke
+
+          docker run --rm \
+            -v /tmp/mvar-nonce-smoke:/var/mvar \
+            -e MVAR_REQUIRE_EXECUTION_TOKEN=1 \
+            -e MVAR_EXEC_TOKEN_SECRET=ci_openai_secret \
+            -e MVAR_EXECUTION_TOKEN_ONE_TIME=1 \
+            -e MVAR_EXECUTION_TOKEN_NONCE_PERSIST=1 \
+            -e MVAR_EXEC_TOKEN_NONCE_STORE=/var/mvar/consumed_nonces.jsonl \
+            -e MVAR_ENABLE_LEDGER=0 \
+            -e MVAR_ENABLE_TRUST_ORACLE=0 \
+            mvar-openai-runtime:ci \
+            python examples/deployment/openai_docker/replay_probe.py | tee /tmp/openai-nonce-probe-a.log
+
+          docker run --rm \
+            -v /tmp/mvar-nonce-smoke:/var/mvar \
+            -e MVAR_REQUIRE_EXECUTION_TOKEN=1 \
+            -e MVAR_EXEC_TOKEN_SECRET=ci_openai_secret \
+            -e MVAR_EXECUTION_TOKEN_ONE_TIME=1 \
+            -e MVAR_EXECUTION_TOKEN_NONCE_PERSIST=1 \
+            -e MVAR_EXEC_TOKEN_NONCE_STORE=/var/mvar/consumed_nonces.jsonl \
+            -e MVAR_ENABLE_LEDGER=0 \
+            -e MVAR_ENABLE_TRUST_ORACLE=0 \
+            mvar-openai-runtime:ci \
+            python examples/deployment/openai_docker/replay_probe.py | tee /tmp/openai-nonce-probe-b.log
+
+          grep -q "nonce_probe=ALLOW" /tmp/openai-nonce-probe-a.log
+          grep -q "nonce_probe=BLOCK" /tmp/openai-nonce-probe-b.log

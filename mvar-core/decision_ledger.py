@@ -219,6 +219,13 @@ class MVARDecisionLedger:
         Returns:
             Signed scroll with qseal_signature field
         """
+        if self._scroll_cache is None:
+            self._load_scrolls()
+        if self._scroll_cache:
+            prev_sig = self._scroll_cache[-1].get("qseal_signature")
+            if prev_sig:
+                scroll["qseal_prev_signature"] = prev_sig
+
         if not self.enable_qseal_signing:
             scroll["qseal_algorithm"] = "none"
             scroll["qseal_signature"] = "UNSIGNED"
@@ -348,6 +355,7 @@ class MVARDecisionLedger:
             scrolls = []
             seen_scroll_ids = set()
             seen_nonces = set()
+            last_signature = None
             if self.ledger_path.exists():
                 with open(self.ledger_path, "r") as f:
                     for line_num, line in enumerate(f, 1):
@@ -365,9 +373,15 @@ class MVARDecisionLedger:
                                     if self.debug_ledger:
                                         print(f"⚠️  Skipping replayed/invalid nonce at line {line_num}")
                                     continue
+                                prev_sig = scroll.get("qseal_prev_signature")
+                                if prev_sig and last_signature and prev_sig != last_signature:
+                                    if self.debug_ledger:
+                                        print(f"⚠️  Skipping broken signature chain at line {line_num}")
+                                    continue
                                 seen_scroll_ids.add(scroll_id)
                                 seen_nonces.add(nonce)
                                 scrolls.append(scroll)
+                                last_signature = scroll.get("qseal_signature", last_signature)
                             else:
                                 if self.debug_ledger:
                                     print(f"⚠️  Skipping unverified scroll at line {line_num}")
@@ -433,6 +447,56 @@ class MVARDecisionLedger:
         signed_scroll = self._sign_scroll(scroll)
         self._append_scroll(signed_scroll)
 
+        return scroll_id
+
+    def record_execution_token_nonce_consumed(
+        self,
+        token: Dict[str, Any],
+        tool: str,
+        action: str,
+        target: str,
+        provenance_node_id: str,
+        policy_hash: str,
+        principal_id: Optional[str] = None,
+        parent_decision_id: Optional[str] = None,
+    ) -> str:
+        """
+        Record execution-token nonce consumption as a signed audit scroll.
+
+        This makes one-time token replay revocations tamper-evident and
+        linked into the same ledger signature chain as policy decisions.
+        """
+        scroll_id = self._generate_scroll_id("TOK")
+        token_nonce = str(token.get("nonce", ""))
+        token_expires_at = str(token.get("expires_at", ""))
+        token_payload = {k: v for k, v in token.items() if k != "signature"}
+        token_payload_hash = hashlib.sha256(
+            json.dumps(token_payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        ).hexdigest()
+
+        scroll = {
+            "scroll_id": scroll_id,
+            "scroll_type": "token_nonce",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "nonce": self._generate_nonce(),
+            "schema_version": "1.1",
+            "principal_id": principal_id or self._default_principal_id(),
+            "event": "execution_token_nonce_consumed",
+            "parent_decision_id": parent_decision_id or "",
+            "token_nonce_hash": hashlib.sha256(token_nonce.encode("utf-8")).hexdigest(),
+            "token_payload_hash": token_payload_hash,
+            "token_expires_at": token_expires_at,
+            "sink_target": {
+                "tool": tool,
+                "action": action,
+                "target_hash": self._compute_target_hash(target),
+            },
+            "provenance_node_id": provenance_node_id,
+            "policy_hash": policy_hash,
+        }
+
+        signed_scroll = self._sign_scroll(scroll)
+        self._append_scroll(signed_scroll)
         return scroll_id
 
     def create_override(
