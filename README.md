@@ -23,6 +23,17 @@ python -m pip install -U pip setuptools wheel
 python -m pip install .
 ```
 
+### Ready-to-Use Adapters
+- LangChain
+- OpenAI
+- Claude
+- AutoGen
+- CrewAI
+- MCP
+- OpenClaw
+
+See [docs/FIRST_PARTY_ADAPTERS.md](docs/FIRST_PARTY_ADAPTERS.md) for quickstarts and wrapper details.
+
 ### Run the Demo
 ```bash
 mvar-demo
@@ -78,7 +89,7 @@ MVAR functions as a deterministic reference monitor at execution sinks.
 ### 1. Provenance Taint Tracking
 - Labels all data with integrity (TRUSTED/UNTRUSTED) + confidentiality (PUBLIC/SENSITIVE/SECRET)
 - Conservative propagation: any untrusted input → all derived outputs untrusted
-- QSEAL Ed25519 signatures on provenance nodes (when enabled)
+- QSEAL Ed25519 signatures on provenance nodes (when enabled). In local demos, built-in signing is used; full MIRRA QSEAL engine is used when available.
 
 ```python
 # User message → TRUSTED/PUBLIC
@@ -101,17 +112,14 @@ create_derived_node(parents=[user, doc])
 - Deterministic decision invariant: `UNTRUSTED + CRITICAL = BLOCK`
 - Full evaluation trace + QSEAL-signed decisions
 
-```
 Decision Matrix:
-┌─────────────────┬──────────────┬────────────┐
-│ Integrity       │ Sink Risk    │ Outcome    │
-├─────────────────┼──────────────┼────────────┤
-│ UNTRUSTED       │ CRITICAL     │ BLOCK      │
-│ UNTRUSTED       │ HIGH         │ BLOCK      │
-│ UNTRUSTED       │ MEDIUM       │ STEP_UP    │
-│ TRUSTED         │ CRITICAL     │ STEP_UP    │
-└─────────────────┴──────────────┴────────────┘
-```
+
+| Integrity | Sink Risk | Outcome |
+|---|---|---|
+| UNTRUSTED | CRITICAL | BLOCK |
+| UNTRUSTED | HIGH | BLOCK |
+| UNTRUSTED | MEDIUM | STEP_UP |
+| TRUSTED | CRITICAL | STEP_UP |
 
 **Research context:** IFC-style dual-lattice taint tracking (e.g., Jif/FlowCaml lineage) applied to agent runtimes with deterministic enforcement and cryptographic auditability.
 
@@ -433,6 +441,17 @@ Machine-readable citation metadata: [CITATION.cff](CITATION.cff)
 **Shawn Cohen**
 Email: security@mvar.io
 GitHub: [@mvar-security](https://github.com/mvar-security)
+
+---
+
+## Get Involved
+
+- Star the repo if this approach is useful in your environment.
+- Run the launch gate locally: `./scripts/launch-gate.sh`
+- Run the agent testbed scenarios: `python examples/agent_testbed.py --scenario rag_injection`
+- Submit adversarial vectors: [docs/ATTACK_VECTOR_SUBMISSIONS.md](docs/ATTACK_VECTOR_SUBMISSIONS.md)
+- Build adapters against the contract: [docs/ADAPTER_SPEC.md](docs/ADAPTER_SPEC.md)
+- Open issues with reproductions, traces, and expected vs actual outcomes.
 
 ---
 
