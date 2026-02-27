@@ -50,6 +50,7 @@ try:
     )
     from .qseal import QSealSigner
     from .decision_ledger import MVARDecisionLedger
+    from .composition_risk import CompositionRiskEngine
 except ImportError:
     from capability import CapabilityRuntime, CapabilityType
     from provenance import (
@@ -60,6 +61,7 @@ except ImportError:
     )
     from qseal import QSealSigner
     from decision_ledger import MVARDecisionLedger
+    from composition_risk import CompositionRiskEngine
 
 
 class SinkRisk(Enum):
@@ -243,6 +245,7 @@ class SinkPolicy:
         self.require_execution_token = os.getenv("MVAR_REQUIRE_EXECUTION_TOKEN", "0") == "1"
         self.execution_token_ttl_seconds = int(os.getenv("MVAR_EXECUTION_TOKEN_TTL_SECONDS", "300"))
         self._execution_token_secret = os.getenv("MVAR_EXEC_TOKEN_SECRET", os.getenv("QSEAL_SECRET", "")).encode("utf-8")
+        self.enable_composition_risk = os.getenv("MVAR_ENABLE_COMPOSITION_RISK", "0") == "1"
         self._secret_pattern = re.compile(
             r"(?i)(api[_-]?key|secret|token|password|passwd|authorization:|aws_access_key_id|aws_secret_access_key)"
         )
@@ -287,6 +290,25 @@ class SinkPolicy:
             self.trust_tracker = TrustTracker(
                 decision_ledger=self.decision_ledger,
                 enable_qseal_signing=enable_qseal_signing
+            )
+
+        # Composition risk guardrail (feature-flagged, default OFF)
+        self.composition_risk_engine = None
+        if self.enable_composition_risk:
+            raw_weights = os.getenv("MVAR_COMPOSITION_RISK_WEIGHTS", "").strip()
+            parsed_weights = None
+            if raw_weights:
+                try:
+                    payload = json.loads(raw_weights)
+                    if isinstance(payload, dict):
+                        parsed_weights = {str(k).lower(): int(v) for k, v in payload.items()}
+                except Exception:
+                    parsed_weights = None
+            self.composition_risk_engine = CompositionRiskEngine(
+                window_seconds=int(os.getenv("MVAR_COMPOSITION_WINDOW_SECONDS", "900")),
+                step_up_threshold=int(os.getenv("MVAR_COMPOSITION_STEP_UP_THRESHOLD", "8")),
+                block_threshold=int(os.getenv("MVAR_COMPOSITION_BLOCK_THRESHOLD", "12")),
+                risk_weights=parsed_weights,
             )
 
     def _extract_text_blobs(self, target: str, parameters: Optional[Dict[str, Any]]) -> List[str]:
@@ -788,6 +810,34 @@ class SinkPolicy:
         policy_hash: str = ""
     ) -> PolicyDecision:
         """Internal: Create PolicyDecision with QSEAL signature and record to ledger"""
+        evaluation_trace = list(evaluation_trace)
+
+        # Composition hardening: cumulative risk pressure across a session/principal.
+        if self.composition_risk_engine:
+            snapshot = self.composition_risk_engine.preview(
+                principal_id=self.principal_id,
+                sink_risk=sink.risk.value,
+            )
+            evaluation_trace.append(
+                f"composition_risk: current={snapshot.current_score}, predicted={snapshot.predicted_score}, "
+                f"next_weight={snapshot.next_weight}, window_s={snapshot.window_seconds}"
+            )
+            if outcome != PolicyOutcome.BLOCK:
+                if snapshot.predicted_score >= snapshot.block_threshold:
+                    outcome = PolicyOutcome.BLOCK
+                    reason = (
+                        f"Cumulative composition risk budget exceeded "
+                        f"({snapshot.predicted_score} >= {snapshot.block_threshold})"
+                    )
+                    evaluation_trace.append("composition_threshold_block → BLOCK")
+                elif snapshot.predicted_score >= snapshot.step_up_threshold and outcome == PolicyOutcome.ALLOW:
+                    outcome = PolicyOutcome.STEP_UP
+                    reason = (
+                        f"Cumulative composition risk requires STEP_UP "
+                        f"({snapshot.predicted_score} >= {snapshot.step_up_threshold})"
+                    )
+                    evaluation_trace.append("composition_threshold_step_up → STEP_UP")
+
         provenance_node = self.provenance_graph.nodes.get(
             provenance_node_id,
             ProvenanceNode(
@@ -809,6 +859,24 @@ class SinkPolicy:
             evaluation_trace=evaluation_trace,
             policy_hash=policy_hash
         )
+
+        if self.composition_risk_engine and decision.outcome in (PolicyOutcome.ALLOW, PolicyOutcome.STEP_UP):
+            target_hash = hashlib.sha256(target.encode("utf-8")).hexdigest()[:16] if target else "none"
+            self.composition_risk_engine.record(
+                principal_id=self.principal_id,
+                sink_risk=sink.risk.value,
+                outcome=decision.outcome.value,
+                tool=sink.tool,
+                action=sink.action,
+                target_hash=target_hash,
+            )
+            post = self.composition_risk_engine.preview(
+                principal_id=self.principal_id,
+                sink_risk="low",
+            )
+            decision.evaluation_trace.append(
+                f"composition_post_record: score={post.current_score}, events={post.event_count}"
+            )
 
         # QSEAL signature
         if self.enable_qseal:

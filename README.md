@@ -227,6 +227,20 @@ python3 ./scripts/check_agent_testbed_trilogy.py
 CI wiring:
 - `.github/workflows/launch-gate.yml`
 
+### Composition Risk Gate (CI-Enforced)
+
+MVAR can enforce a cumulative composition-risk budget per principal/session to catch multi-step chains (e.g., `LOW + LOW + MEDIUM`) that are individually acceptable but collectively risky.
+
+Enable locally:
+
+```bash
+export MVAR_ENABLE_COMPOSITION_RISK=1
+python -m pytest -q tests/test_composition_risk.py
+```
+
+CI wiring:
+- `.github/workflows/launch-gate.yml` (`Run composition risk regression gate`)
+
 Reference doc: [docs/AGENT_TESTBED.md](docs/AGENT_TESTBED.md)
 Showcase summary: [docs/ATTACK_VALIDATION_SHOWCASE.md](docs/ATTACK_VALIDATION_SHOWCASE.md)
 
@@ -389,7 +403,7 @@ MVAR is a **policy enforcement layer**, not a detection system. It assumes untru
 **Known limitations:**
 1. **Graph Write Trust** — If attacker gains write access to provenance graph process, they can inject TRUSTED nodes. Analogous to firewall rule compromise. Mitigation: QSEAL signature verification detects post-creation tampering.
 
-2. **Composition Attacks** — Multi-step chains (LOW + LOW → HIGH risk) not modeled in Phase 1. Each sink evaluated independently. Phase 2: inter-sink correlation / cumulative risk modeling.
+2. **Composition Attacks** — Base policy evaluates sinks independently. Optional cumulative hardening is now available via `MVAR_ENABLE_COMPOSITION_RISK=1` (session/principal risk budget with deterministic `STEP_UP/BLOCK` thresholds). Further tuning and expanded attack coverage continue in Phase 2.
 
 3. **Manual Sink Annotation** — Requires explicit sink registration (not automatic instrumentation). Roadmap: LangChain/OpenAI adapter hooks.
 

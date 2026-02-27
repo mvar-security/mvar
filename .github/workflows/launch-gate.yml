@@ -36,6 +36,9 @@ jobs:
       - name: Run agent testbed trilogy gate
         run: python ./scripts/check_agent_testbed_trilogy.py
 
+      - name: Run composition risk regression gate
+        run: pytest -q tests/test_composition_risk.py
+
   openai-deep-integration:
     name: OpenAI Deep Integration (Python 3.12 + Docker smoke)
     runs-on: ubuntu-latest
