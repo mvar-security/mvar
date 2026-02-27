@@ -52,7 +52,7 @@ except ImportError:
 QSEAL_MODE = "ed25519" if verify_entry is not None else "hmac-sha256"
 
 if QSEAL_MODE == "hmac-sha256":
-    print("ℹ️  MIRRA QSEAL engine not detected — using built-in QSEAL signing (HMAC fallback mode)")
+    print("ℹ️  MIRRA QSEAL engine not detected — using built-in QSEAL signing")
 
 
 def generate_signature(payload: dict) -> str:
