@@ -472,7 +472,12 @@ GitHub: [@mvar-security](https://github.com/mvar-security)
 - Run the launch gate locally: `./scripts/launch-gate.sh`
 - Run the agent testbed scenarios: `python examples/agent_testbed.py --scenario rag_injection`
 - Submit adversarial vectors: [docs/ATTACK_VECTOR_SUBMISSIONS.md](docs/ATTACK_VECTOR_SUBMISSIONS.md)
+- Open OpenAI break attempts with repros: [.github/ISSUE_TEMPLATE/openai_break_attempt.md](.github/ISSUE_TEMPLATE/openai_break_attempt.md)
+- Pinned issue draft (copy/paste): [docs/issues/PINNED_OPENAI_BREAK_ATTEMPTS_ISSUE.md](docs/issues/PINNED_OPENAI_BREAK_ATTEMPTS_ISSUE.md)
 - Build adapters against the contract: [docs/ADAPTER_SPEC.md](docs/ADAPTER_SPEC.md)
+- Technical note: [docs/WHY_CONTROL_PLANE_NOT_FILTERS.md](docs/WHY_CONTROL_PLANE_NOT_FILTERS.md)
+- Outreach templates: [docs/outreach/HN_COMMENT_TEMPLATE.md](docs/outreach/HN_COMMENT_TEMPLATE.md), [docs/outreach/REDDIT_POST_TEMPLATE.md](docs/outreach/REDDIT_POST_TEMPLATE.md), [docs/outreach/X_THREAD_TEMPLATE.md](docs/outreach/X_THREAD_TEMPLATE.md), [docs/outreach/MAINTAINER_DM_TEMPLATE.md](docs/outreach/MAINTAINER_DM_TEMPLATE.md)
+- Release notes (`v1.0.4` draft): [docs/releases/v1.0.4.md](docs/releases/v1.0.4.md)
 - Open issues with reproductions, traces, and expected vs actual outcomes.
 
 ---
