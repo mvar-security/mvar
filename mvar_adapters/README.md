@@ -83,6 +83,27 @@ result = adapter.execute_tool_call(
 )
 ```
 
+### OpenAI Responses Runtime (Milestone 1 deeper integration)
+
+For multi-tool response payloads (Responses API / batched tool calls):
+
+```python
+from mvar_openai import MVAROpenAIResponsesRuntime
+
+runtime = MVAROpenAIResponsesRuntime(policy, graph, strict=False)
+turn_node = runtime.create_turn_provenance(
+    user_prompt="Summarize retrieved docs",
+    retrieved_chunks=["external chunk"],
+)
+batch = runtime.execute_response(
+    response_payload=response_payload,
+    tool_registry=tool_registry,
+    provenance_node_id=turn_node,
+    source_context="user_prompt + retrieved_doc_chunk",
+    planner_output="model-proposed tool plan",
+)
+```
+
 ## 3) MCP Tool Call Wrapper
 
 ```python

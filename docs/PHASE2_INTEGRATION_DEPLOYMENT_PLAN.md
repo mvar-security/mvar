@@ -7,6 +7,12 @@ This plan turns the Phase 2 roadmap line into concrete, shippable work.
 - Publish deployment cookbooks that make production rollout repeatable.
 - Keep all claims reproducible via tests, CI checks, and runnable examples.
 
+## Current status
+- Milestone 1 started.
+- Initial deeper OpenAI runtime added: `mvar_openai.MVAROpenAIResponsesRuntime`.
+- Initial Docker cookbook added: `docs/deployment/OPENAI_DOCKER_COOKBOOK.md`.
+- Regression coverage added: `tests/test_openai_deep_integration.py`.
+
 ## Deliverable A: Deeper Integration Packages
 
 ### Target packages

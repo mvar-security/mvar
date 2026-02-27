@@ -16,6 +16,9 @@ class MVAROpenAIAdapter(MVARExecutionAdapter):
         provenance_node_id: Optional[str] = None,
         source_text: str = "",
         source_is_untrusted: bool = True,
+        source_context: str = "",
+        planner_output: str = "",
+        execution_token: Optional[Dict[str, Any]] = None,
     ) -> AdapterExecutionResult:
         function_obj = tool_call.get("function", tool_call)
         tool_name = function_obj.get("name")
@@ -42,7 +45,7 @@ class MVAROpenAIAdapter(MVARExecutionAdapter):
         target_is_fallback = resolved_target is None
         target = str(resolved_target or tool_name)
 
-        return self.enforce_and_execute(
+        result = self.enforce_and_execute(
             tool=tool_name,
             action=action,
             target=target,
@@ -51,5 +54,26 @@ class MVAROpenAIAdapter(MVARExecutionAdapter):
             source_text=source_text,
             source_is_untrusted=source_is_untrusted,
             parameters=arguments,
+            execution_token=execution_token,
             target_is_fallback=target_is_fallback,
         )
+        self._append_context_trace(
+            result,
+            source_context=source_context,
+            planner_output=planner_output,
+        )
+        return result
+
+    @staticmethod
+    def _append_context_trace(
+        result: AdapterExecutionResult,
+        source_context: str,
+        planner_output: str,
+    ) -> None:
+        trace = getattr(result.decision, "evaluation_trace", None)
+        if not isinstance(trace, list):
+            return
+        if source_context:
+            trace.append(f"source_context: {source_context}")
+        if planner_output:
+            trace.append(f"planner_output: {planner_output}")

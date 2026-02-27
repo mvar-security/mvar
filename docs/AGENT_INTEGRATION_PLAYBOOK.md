@@ -81,6 +81,27 @@ result = adapter.execute_tool_call(tool_call, tool_registry, source_text="model 
 
 Hook point: function/tool dispatch handler.
 
+For OpenAI Responses API or batches containing multiple tool calls, use `MVAROpenAIResponsesRuntime`:
+
+```python
+from mvar_openai import MVAROpenAIResponsesRuntime
+
+runtime = MVAROpenAIResponsesRuntime(policy, graph, strict=False)
+turn_node = runtime.create_turn_provenance(
+    user_prompt="Summarize these retrieved docs",
+    retrieved_chunks=["external chunk"],
+)
+batch = runtime.execute_response(
+    response_payload=response_payload,
+    tool_registry=tool_registry,
+    provenance_node_id=turn_node,
+    source_context="user_prompt + retrieved_doc_chunk",
+    planner_output="model-proposed tool plan",
+)
+```
+
+Hook point: centralized response/tool-call dispatch loop.
+
 ### MCP
 
 Use `MVARMCPAdapter`.
@@ -153,5 +174,6 @@ For unsupported frameworks, adapt through `MVARExecutionAdapter` and map runtime
 
 - `docs/ADAPTER_SPEC.md`
 - `docs/FIRST_PARTY_ADAPTERS.md`
+- `docs/deployment/OPENAI_DOCKER_COOKBOOK.md`
 - `mvar_adapters/README.md`
 - `conformance/pytest_adapter_harness.py`
