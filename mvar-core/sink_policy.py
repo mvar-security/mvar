@@ -244,6 +244,7 @@ class SinkPolicy:
         self.principal_id = os.getenv("MVAR_PRINCIPAL_ID", f"local_install:{hashlib.sha256(str(Path.cwd()).encode('utf-8')).hexdigest()[:12]}")
         self.require_execution_token = os.getenv("MVAR_REQUIRE_EXECUTION_TOKEN", "0") == "1"
         self.execution_token_ttl_seconds = int(os.getenv("MVAR_EXECUTION_TOKEN_TTL_SECONDS", "300"))
+        self.execution_token_one_time = os.getenv("MVAR_EXECUTION_TOKEN_ONE_TIME", "1") == "1"
         self._execution_token_secret = os.getenv("MVAR_EXEC_TOKEN_SECRET", os.getenv("QSEAL_SECRET", "")).encode("utf-8")
         self.enable_composition_risk = os.getenv("MVAR_ENABLE_COMPOSITION_RISK", "0") == "1"
         self._secret_pattern = re.compile(
@@ -260,6 +261,7 @@ class SinkPolicy:
 
         # STEP_UP approvals registry
         self.step_up_approvals: Dict[str, StepUpApproval] = {}
+        self._consumed_execution_token_nonces: Dict[str, datetime] = {}
 
         # NEW: Decision ledger (feature-flagged, default OFF)
         # Note: Ledger is independent of enable_qseal (you can have ledger without QSEAL signatures)
@@ -363,6 +365,26 @@ class SinkPolicy:
         ).hexdigest()
         return payload
 
+    def _prune_consumed_execution_tokens(self) -> None:
+        if not self._consumed_execution_token_nonces:
+            return
+        now = datetime.now(timezone.utc)
+        stale = [nonce for nonce, expiry in self._consumed_execution_token_nonces.items() if now >= expiry]
+        for nonce in stale:
+            self._consumed_execution_token_nonces.pop(nonce, None)
+
+    def _consume_execution_token_nonce(self, token: Dict[str, Any]) -> None:
+        if not self.execution_token_one_time:
+            return
+        nonce = token.get("nonce")
+        if not nonce:
+            return
+        try:
+            expires = datetime.fromisoformat(str(token.get("expires_at", "")).replace("Z", "+00:00"))
+        except Exception:
+            expires = datetime.now(timezone.utc) + timedelta(seconds=max(self.execution_token_ttl_seconds, 1))
+        self._consumed_execution_token_nonces[str(nonce)] = expires
+
     def verify_execution_token(
         self,
         token: Dict[str, Any],
@@ -377,6 +399,13 @@ class SinkPolicy:
         try:
             if token.get("algorithm") != "hmac-sha256":
                 return False
+            nonce = str(token.get("nonce", ""))
+            if self.execution_token_one_time:
+                if not nonce:
+                    return False
+                self._prune_consumed_execution_tokens()
+                if nonce in self._consumed_execution_token_nonces:
+                    return False
             expires = datetime.fromisoformat(token["expires_at"].replace("Z", "+00:00"))
             if datetime.now(timezone.utc) >= expires:
                 return False
@@ -795,6 +824,9 @@ class SinkPolicy:
                 decision.outcome = PolicyOutcome.BLOCK
                 decision.reason = "Execution token invalid"
                 decision.evaluation_trace.append("execution_token_invalid → BLOCK")
+            else:
+                self._consume_execution_token_nonce(execution_token)
+                decision.evaluation_trace.append("execution_token_consumed")
         return decision
 
     def _make_decision(

@@ -241,6 +241,17 @@ python -m pytest -q tests/test_composition_risk.py
 CI wiring:
 - `.github/workflows/launch-gate.yml` (`Run composition risk regression gate`)
 
+### Execution Token Replay Defense (Milestone 1c)
+
+Execution tokens can run in strict one-time mode to prevent replay. In this mode, each token nonce is consumed on first successful authorization; subsequent reuse is blocked.
+
+Environment flags:
+
+```bash
+export MVAR_REQUIRE_EXECUTION_TOKEN=1
+export MVAR_EXECUTION_TOKEN_ONE_TIME=1   # default: enabled
+```
+
 Reference doc: [docs/AGENT_TESTBED.md](docs/AGENT_TESTBED.md)
 Showcase summary: [docs/ATTACK_VALIDATION_SHOWCASE.md](docs/ATTACK_VALIDATION_SHOWCASE.md)
 
