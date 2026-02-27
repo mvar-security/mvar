@@ -202,6 +202,7 @@ What to look for in MVAR trace:
 - signed decision details: `qseal_algo`, `qseal_sig`
 
 Reference doc: [docs/AGENT_TESTBED.md](docs/AGENT_TESTBED.md)
+Showcase summary: [docs/ATTACK_VALIDATION_SHOWCASE.md](docs/ATTACK_VALIDATION_SHOWCASE.md)
 
 Want to challenge the model with new adversarial variants?  
 Submit vectors via [docs/ATTACK_VECTOR_SUBMISSIONS.md](docs/ATTACK_VECTOR_SUBMISSIONS.md).
