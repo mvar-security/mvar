@@ -49,7 +49,8 @@ QSEAL_MODE = "ed25519" if verify_entry is not None else "hmac-sha256"
 
 if QSEAL_MODE == "hmac-sha256":
     print(
-        "ℹ️  MIRRA QSEAL engine not detected — decision ledger signing uses HMAC-SHA256 fallback"
+        "ℹ️  MIRRA QSEAL engine not detected — decision ledger uses HMAC-SHA256 fallback "
+        "(runtime policy traces may still show local Ed25519 signer)"
     )
 
 

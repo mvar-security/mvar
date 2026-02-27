@@ -178,6 +178,36 @@ See [demo/extreme_attack_suite_50.py](demo/extreme_attack_suite_50.py) for compl
 
 ---
 
+## Reproducible Agent Attack Testbed (Baseline vs MVAR)
+
+Run the same agent behavior with and without execution-boundary enforcement:
+
+```bash
+python examples/agent_testbed.py --scenario rag_injection
+python examples/agent_testbed.py --scenario taint_laundering
+python examples/agent_testbed.py --scenario benign
+```
+
+Expected outcomes:
+
+| Scenario | Baseline | MVAR |
+|----------|----------|------|
+| `rag_injection` | ALLOW + simulated execution | BLOCK + no execution |
+| `taint_laundering` | ALLOW + simulated execution | BLOCK + no execution |
+| `benign` | ALLOW + simulated execution | ALLOW + simulated execution |
+
+What to look for in MVAR trace:
+- `source_context` and `planner_output` preserved from untrusted retrieval input
+- deterministic invariant line: `UNTRUSTED + CRITICAL -> BLOCK`
+- signed decision details: `qseal_algo`, `qseal_sig`
+
+Reference doc: [docs/AGENT_TESTBED.md](docs/AGENT_TESTBED.md)
+
+Want to challenge the model with new adversarial variants?  
+Submit vectors via [docs/ATTACK_VECTOR_SUBMISSIONS.md](docs/ATTACK_VECTOR_SUBMISSIONS.md).
+
+---
+
 ## Architecture
 
 MVAR implements **3 deterministic security layers** grounded in published research:

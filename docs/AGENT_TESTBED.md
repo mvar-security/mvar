@@ -38,3 +38,16 @@ python examples/agent_testbed.py --scenario taint_laundering
 
 This verifies that decoded/rewritten malicious content from untrusted retrieval
 still blocks at critical sinks.
+
+## Scenario matrix
+
+| Scenario | Baseline | MVAR |
+|----------|----------|------|
+| `rag_injection` | ALLOW + simulated execution | BLOCK + no execution |
+| `taint_laundering` | ALLOW + simulated execution | BLOCK + no execution |
+| `benign` | ALLOW + simulated execution | ALLOW + simulated execution |
+
+## Community challenge
+
+If you have additional adversarial prompts or retrieval payloads, submit them via:
+[docs/ATTACK_VECTOR_SUBMISSIONS.md](ATTACK_VECTOR_SUBMISSIONS.md)

@@ -18,8 +18,18 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-# Try installed package imports first; fall back to local development imports.
-try:
+# Prefer local repo modules for demo consistency; fall back to installed package.
+MVAR_CORE = Path(__file__).resolve().parent.parent / "mvar-core"
+if MVAR_CORE.exists():
+    sys.path.insert(0, str(MVAR_CORE))
+    from provenance import (
+        ProvenanceGraph,
+        provenance_external_doc,
+        provenance_user_input,
+    )
+    from capability import CapabilityGrant, CapabilityRuntime, CapabilityType, build_shell_tool
+    from sink_policy import PolicyOutcome, SinkPolicy, register_common_sinks
+else:
     from mvar_core.provenance import (
         ProvenanceGraph,
         provenance_external_doc,
@@ -32,16 +42,6 @@ try:
         build_shell_tool,
     )
     from mvar_core.sink_policy import PolicyOutcome, SinkPolicy, register_common_sinks
-except ImportError:
-    MVAR_CORE = Path(__file__).parent.parent / "mvar-core"
-    sys.path.insert(0, str(MVAR_CORE))
-    from provenance import (
-        ProvenanceGraph,
-        provenance_external_doc,
-        provenance_user_input,
-    )
-    from capability import CapabilityGrant, CapabilityRuntime, CapabilityType, build_shell_tool
-    from sink_policy import PolicyOutcome, SinkPolicy, register_common_sinks
 
 
 @dataclass
