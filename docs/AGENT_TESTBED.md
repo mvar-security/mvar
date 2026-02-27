@@ -13,7 +13,7 @@ The shell tool is simulated only (no host side effects; safe demo).
 ## Run
 
 ```bash
-python examples/agent_testbed.py --scenario injection
+python examples/agent_testbed.py --scenario rag_injection
 ```
 
 Expected outcome:
@@ -29,3 +29,12 @@ python examples/agent_testbed.py --scenario benign
 ```
 
 This helps verify normal-path behavior in the same harness.
+
+## Optional taint-laundering scenario
+
+```bash
+python examples/agent_testbed.py --scenario taint_laundering
+```
+
+This verifies that decoded/rewritten malicious content from untrusted retrieval
+still blocks at critical sinks.
