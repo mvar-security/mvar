@@ -171,9 +171,9 @@ MVAR's sink policy was evaluated against a 50-vector adversarial corpus spanning
 | Taint laundering (cache, logs, temp files) | 5 | ✅ 5/5 blocked |
 | Template escaping (JSON, XML, Markdown) | 5 | ✅ 5/5 blocked |
 | Credential theft (AWS, SSH keys) | 4 | ✅ 4/4 blocked |
-| Novel/zero-day patterns | 4 | ✅ 4/4 blocked |
+| Novel corpus variants | 4 | ✅ 4/4 blocked |
 
-**Result:** Consistent deterministic policy outcomes across all 50 scenarios under the current sink configuration and labeling policy.
+**Result:** Blocked all vectors in the current validation corpus under the current sink configuration and labeling policy.
 
 **Scope:** This demonstrates consistent enforcement for this validation corpus. Not a proof of completeness against all possible attacks.
 
