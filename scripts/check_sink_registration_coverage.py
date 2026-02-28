@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Fail if literal policy.evaluate(tool, action, ...) calls reference unregistered sinks."""
+"""Fail if literal policy.evaluate(tool, action, ...) calls reference unregistered sinks.
+
+Coverage sources:
+- Global sink registry in ``mvar-core/sink_policy.py`` via ``register_common_sinks``.
+- Local sink registrations in demos/examples via ``policy.register_sink(SinkClassification(...))``.
+"""
 
 from __future__ import annotations
 
@@ -37,6 +42,42 @@ def _extract_registered_pairs(tree: ast.AST) -> set[tuple[str, str]]:
                         action = _const_str(kw.value)
                 if tool and action:
                     pairs.add((tool, action))
+            self.generic_visit(node)
+
+    Visitor().visit(tree)
+    return pairs
+
+
+def _extract_locally_registered_pairs(tree: ast.AST) -> set[tuple[str, str]]:
+    """Extract literal tool/action pairs from local register_sink calls."""
+    pairs: set[tuple[str, str]] = set()
+
+    class Visitor(ast.NodeVisitor):
+        def visit_Call(self, node: ast.Call) -> None:
+            if isinstance(node.func, ast.Attribute) and node.func.attr == "register_sink":
+                if not node.args:
+                    self.generic_visit(node)
+                    return
+
+                sink_node = node.args[0]
+                if not (
+                    isinstance(sink_node, ast.Call)
+                    and isinstance(sink_node.func, ast.Name)
+                    and sink_node.func.id == "SinkClassification"
+                ):
+                    self.generic_visit(node)
+                    return
+
+                tool = None
+                action = None
+                for kw in sink_node.keywords:
+                    if kw.arg == "tool":
+                        tool = _const_str(kw.value)
+                    elif kw.arg == "action":
+                        action = _const_str(kw.value)
+                if tool and action:
+                    pairs.add((tool, action))
+
             self.generic_visit(node)
 
     Visitor().visit(tree)
@@ -94,15 +135,19 @@ def _iter_python_files(root: Path) -> Iterable[Path]:
 def main() -> int:
     sink_tree = ast.parse(SINK_POLICY_FILE.read_text(encoding="utf-8"), filename=str(SINK_POLICY_FILE))
     registered = _extract_registered_pairs(sink_tree)
+    local_registered: set[tuple[str, str]] = set()
 
     used: set[tuple[str, str]] = set()
     for py in _iter_python_files(REPO_ROOT):
         tree = ast.parse(py.read_text(encoding="utf-8"), filename=str(py))
         used.update(_extract_evaluate_pairs(tree))
+        local_registered.update(_extract_locally_registered_pairs(tree))
 
-    missing = sorted((used - registered) - INTENTIONAL_UNREGISTERED)
+    all_registered = registered | local_registered
+    missing = sorted((used - all_registered) - INTENTIONAL_UNREGISTERED)
 
-    print(f"registered sink pairs: {len(registered)}")
+    print(f"registered sink pairs (common): {len(registered)}")
+    print(f"registered sink pairs (local): {len(local_registered)}")
     print(f"literal evaluate sink pairs observed: {len(used)}")
 
     if missing:
