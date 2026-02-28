@@ -73,6 +73,10 @@ if decision.outcome == PolicyOutcome.BLOCK:
 **Complete example:** [examples/custom_agent.py](examples/custom_agent.py)  
 **Installation guide:** [INSTALL.md](INSTALL.md)
 
+## Research
+
+- [Execution-Witness Binding: Proof-Carrying Authorization for LLM Agent Runtimes](docs/papers/execution-witness-binding.pdf) (February 2026) — Technical paper describing MVAR's novel contributions: composition risk detection, execution-witness binding for TOCTOU prevention, and persistent replay defense.
+
 ---
 
 ## The Problem
