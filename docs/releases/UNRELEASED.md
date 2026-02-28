@@ -23,10 +23,16 @@
   - Sensitive/secret cross-scope writes require a signed declassify token.
   - Added one-time declassify token replay rejection.
 
+- Added **signed policy bundle startup verification gate** (Milestone 2b).
+  - Runtime can require a signed canonical policy bundle at startup (`MVAR_REQUIRE_SIGNED_POLICY_BUNDLE=1`).
+  - Startup blocks if bundle is missing, signature-invalid, or hash/payload mismatched.
+  - Added bundle generation helper: `scripts/generate_signed_policy_bundle.py`.
+
 - Expanded **regression gate coverage** in CI.
   - `launch-gate.yml` now includes composition-risk regression tests in addition to existing launch-gate and trilogy checks.
   - OpenAI Docker smoke now asserts persisted nonce replay blocking across container restart.
   - Added declassification memory-scope regression tests.
+  - Added signed policy-bundle startup regression tests.
 
 ## Compatibility
 

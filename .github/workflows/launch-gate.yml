@@ -42,6 +42,9 @@ jobs:
       - name: Run declassification memory-scope regression gate
         run: pytest -q tests/test_declassification_memory_scope.py
 
+      - name: Run signed policy-bundle startup gate
+        run: pytest -q tests/test_policy_bundle_gate.py
+
   openai-deep-integration:
     name: OpenAI Deep Integration (Python 3.12 + Docker smoke)
     runs-on: ubuntu-latest

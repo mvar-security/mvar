@@ -52,6 +52,12 @@ try:
     from .decision_ledger import MVARDecisionLedger
     from .composition_risk import CompositionRiskEngine
     from .execution_token_nonce_store import ExecutionTokenNonceStore
+    from .policy_bundle import (
+        build_signed_bundle,
+        canonicalize_sinks,
+        compute_policy_hash,
+        verify_signed_bundle,
+    )
 except ImportError:
     from capability import CapabilityRuntime, CapabilityType
     from provenance import (
@@ -64,6 +70,12 @@ except ImportError:
     from decision_ledger import MVARDecisionLedger
     from composition_risk import CompositionRiskEngine
     from execution_token_nonce_store import ExecutionTokenNonceStore
+    from policy_bundle import (
+        build_signed_bundle,
+        canonicalize_sinks,
+        compute_policy_hash,
+        verify_signed_bundle,
+    )
 
 
 class SinkRisk(Enum):
@@ -245,6 +257,12 @@ class SinkPolicy:
         self.max_command_len = int(os.getenv("MVAR_MAX_COMMAND_LEN", "1024"))
         self.max_blob_len = int(os.getenv("MVAR_MAX_BLOB_LEN", "32768"))
         self._expected_policy_hash = os.getenv("MVAR_EXPECTED_POLICY_HASH", "").strip()
+        self.require_signed_policy_bundle = os.getenv("MVAR_REQUIRE_SIGNED_POLICY_BUNDLE", "0") == "1"
+        self.policy_bundle_path = os.getenv("MVAR_POLICY_BUNDLE_PATH", "").strip()
+        self._policy_bundle_secret = os.getenv(
+            "MVAR_POLICY_BUNDLE_SECRET",
+            os.getenv("MVAR_EXEC_TOKEN_SECRET", os.getenv("QSEAL_SECRET", "")),
+        ).encode("utf-8")
         self.principal_id = os.getenv("MVAR_PRINCIPAL_ID", f"local_install:{hashlib.sha256(str(Path.cwd()).encode('utf-8')).hexdigest()[:12]}")
         self.require_execution_token = os.getenv("MVAR_REQUIRE_EXECUTION_TOKEN", "0") == "1"
         self.execution_token_ttl_seconds = int(os.getenv("MVAR_EXECUTION_TOKEN_TTL_SECONDS", "300"))
@@ -279,6 +297,8 @@ class SinkPolicy:
         self.step_up_approvals: Dict[str, StepUpApproval] = {}
         self._consumed_execution_token_nonces: Dict[str, datetime] = {}
         self._consumed_declassify_token_nonces: Dict[str, datetime] = {}
+        self._startup_policy_verified = False
+        self._startup_policy_error: Optional[str] = None
         self._execution_token_nonce_store = None
         if self.execution_token_one_time and self.execution_token_nonce_persist:
             try:
@@ -628,25 +648,80 @@ class SinkPolicy:
         """Get sink classification"""
         return self.sinks.get((tool, action))
 
-    def _compute_policy_hash(self) -> str:
-        canonical = []
+    def _canonical_policy_payload(self) -> Dict[str, Any]:
+        sink_rows = []
         for key in sorted(self.sinks.keys()):
             sink = self.sinks[key]
-            canonical.append({
-                "tool": sink.tool,
-                "action": sink.action,
-                "risk": sink.risk.value,
-                "rationale": sink.rationale,
-                "require_capability": sink.require_capability.value if sink.require_capability else None,
-                "block_untrusted_integrity": sink.block_untrusted_integrity,
-                "block_confidential_egress": sink.block_confidential_egress,
-                "metadata": sink.metadata,
-            })
-        payload = {
-            "fail_closed": self.fail_closed,
-            "sinks": canonical,
-        }
-        return hashlib.sha256(str(payload).encode("utf-8")).hexdigest()
+            sink_rows.append(
+                {
+                    "tool": sink.tool,
+                    "action": sink.action,
+                    "risk": sink.risk.value,
+                    "rationale": sink.rationale,
+                    "require_capability": sink.require_capability.value if sink.require_capability else None,
+                    "block_untrusted_integrity": sink.block_untrusted_integrity,
+                    "block_confidential_egress": sink.block_confidential_egress,
+                    "metadata": sink.metadata,
+                }
+            )
+        return canonicalize_sinks(sink_rows, fail_closed=self.fail_closed)
+
+    def _compute_policy_hash(self) -> str:
+        return compute_policy_hash(self._canonical_policy_payload())
+
+    def write_signed_policy_bundle(self, bundle_path: Optional[str] = None, issuer: str = "mvar_runtime") -> Dict[str, Any]:
+        """Emit signed policy bundle for deterministic startup verification."""
+        if not self._policy_bundle_secret:
+            raise RuntimeError("policy bundle secret missing")
+        target_path = bundle_path or self.policy_bundle_path
+        if not target_path:
+            raise RuntimeError("policy bundle path missing")
+        bundle = build_signed_bundle(
+            canonical_payload=self._canonical_policy_payload(),
+            secret=self._policy_bundle_secret,
+            issuer=issuer,
+        )
+        path = Path(target_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(bundle, indent=2, sort_keys=True), encoding="utf-8")
+        return bundle
+
+    def _verify_startup_policy_bundle(self, policy_hash: str) -> Optional[str]:
+        """
+        Verify startup policy integrity gate.
+
+        Returns:
+            None when verification is successful.
+            Error string when verification fails.
+        """
+        if self._expected_policy_hash and self._expected_policy_hash != policy_hash:
+            return "Policy integrity mismatch (expected hash does not match runtime hash)"
+
+        require_bundle = self.require_signed_policy_bundle or bool(self.policy_bundle_path)
+        if not require_bundle:
+            return None
+        if not self.policy_bundle_path:
+            return "Signed policy bundle required but MVAR_POLICY_BUNDLE_PATH is unset"
+        if not self._policy_bundle_secret:
+            return "Signed policy bundle required but secret is missing"
+
+        bundle_file = Path(self.policy_bundle_path)
+        if not bundle_file.exists():
+            return f"Signed policy bundle not found: {bundle_file}"
+        try:
+            bundle = json.loads(bundle_file.read_text(encoding="utf-8"))
+        except Exception as exc:
+            return f"Signed policy bundle parse failed: {exc}"
+
+        if not verify_signed_bundle(bundle, self._policy_bundle_secret):
+            return "Signed policy bundle signature verification failed"
+        bundle_hash = str(bundle.get("policy_hash", ""))
+        if bundle_hash != policy_hash:
+            return "Signed policy bundle hash does not match runtime policy hash"
+        bundle_payload = bundle.get("canonical_policy")
+        if bundle_payload != self._canonical_policy_payload():
+            return "Signed policy bundle payload does not match runtime canonical policy"
+        return None
 
     def _enforce_target_boundary(
         self,
@@ -732,22 +807,26 @@ class SinkPolicy:
         evaluation_trace = []
         policy_hash = self._compute_policy_hash()
         evaluation_trace.append(f"policy_hash: {policy_hash}")
-        if self._expected_policy_hash and self._expected_policy_hash != policy_hash:
+        if not self._startup_policy_verified and not self._startup_policy_error:
+            self._startup_policy_error = self._verify_startup_policy_bundle(policy_hash)
+            self._startup_policy_verified = self._startup_policy_error is None
+        if self._startup_policy_error:
             return self._make_decision(
                 outcome=PolicyOutcome.BLOCK,
-                reason="Policy integrity mismatch (expected hash does not match runtime hash)",
+                reason=f"Startup policy verification failed: {self._startup_policy_error}",
                 sink=SinkClassification(
                     tool=tool,
                     action=action,
                     risk=SinkRisk.CRITICAL,
-                    rationale="Policy integrity mismatch"
+                    rationale="Startup policy verification failed",
                 ),
                 provenance_node_id=provenance_node_id,
                 capability_granted=False,
-                evaluation_trace=evaluation_trace + ["policy_integrity_mismatch → BLOCK"],
+                evaluation_trace=evaluation_trace + ["startup_policy_verification_failed → BLOCK"],
                 target=target,
-                policy_hash=policy_hash
+                policy_hash=policy_hash,
             )
+        evaluation_trace.append("startup_policy_verification: ok")
 
         # 0. NEW: Check for active override FIRST (before normal evaluation)
         if self.decision_ledger:
