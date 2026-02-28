@@ -4,7 +4,7 @@ Credential Vault Service
 Provides isolated credential storage with:
 - QSEAL-signed token generation (Ed25519)
 - TTL-based expiration (default 5 minutes)
-- Revocation API triggered by Ψ(t) anomaly detection
+- Revocation API triggered by anomaly score detection
 - Unix domain socket IPC for network namespace isolation
 
 Architecture:
@@ -106,7 +106,7 @@ class CredentialVault:
     Security properties:
     - Credentials never leave vault process unencrypted
     - Tokens have short TTL (default 5 minutes)
-    - Token revocation on Ψ(t) anomaly detection
+    - Token revocation on anomaly score detection
     - Full audit trail with QSEAL chain
     - No network exposure (Unix socket only)
     """
@@ -134,7 +134,7 @@ class CredentialVault:
         # Audit log
         self.audit_log: list = []
 
-        # Revocation triggers (Ψ anomaly thresholds)
+        # Revocation triggers (anomaly score thresholds)
         self.psi_anomaly_threshold = 5.0  # 5-sigma deviation
 
         # Server socket
@@ -228,7 +228,7 @@ class CredentialVault:
         scope = CredentialScope(request.get("scope", "read"))
         ttl_seconds = request.get("ttl_seconds", self.default_ttl_seconds)
         single_use = request.get("single_use", False)
-        entry500_context = request.get("entry500_context", {})
+        verification_context = request.get("verification_context", {})
 
         # Verify credential exists
         if credential_id not in self.credentials:
@@ -250,7 +250,7 @@ class CredentialVault:
             "issued_at": now,
             "expires_at": now + ttl_seconds,
             "single_use": single_use,
-            "entry500_context": entry500_context
+            "verification_context": verification_context
         }
 
         # QSEAL signature
@@ -278,7 +278,7 @@ class CredentialVault:
             "credential_id": credential_id,
             "scope": scope.value,
             "ttl_seconds": ttl_seconds,
-            "entry500_context": entry500_context
+            "verification_context": verification_context
         })
 
         return {
@@ -319,7 +319,7 @@ class CredentialVault:
 
     def _handle_psi_anomaly(self, request: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Handle Ψ(t) anomaly detection.
+        Handle anomaly score detection.
 
         If drift exceeds threshold, revoke all active tokens for that session.
         """
@@ -340,7 +340,7 @@ class CredentialVault:
             revoked_count = 0
             for token in self.tokens.values():
                 if token.is_valid():
-                    # In production: check token session_id from entry500_context
+                    # In production: check token session_id from verification_context
                     self._revoke_token(
                         token.token_id,
                         reason=f"psi_anomaly_detected (score={anomaly_score:.2f}σ)"
@@ -454,7 +454,7 @@ class CredentialVaultClient:
         scope: str = "read",
         ttl_seconds: int = 300,
         single_use: bool = False,
-        entry500_context: Optional[Dict[str, Any]] = None
+        verification_context: Optional[Dict[str, Any]] = None
     ) -> Optional[CredentialToken]:
         """Request a credential token from the vault"""
         request = {
@@ -464,7 +464,7 @@ class CredentialVaultClient:
             "scope": scope,
             "ttl_seconds": ttl_seconds,
             "single_use": single_use,
-            "entry500_context": entry500_context or {}
+            "verification_context": verification_context or {}
         }
 
         response = self._send_request(request)
@@ -504,7 +504,7 @@ class CredentialVaultClient:
         psi_sigma: float,
         session_id: str
     ) -> Dict[str, Any]:
-        """Report Ψ(t) anomaly to vault (may trigger mass revocation)"""
+        """Report anomaly score to vault (may trigger mass revocation)"""
         request = {
             "action": "check_psi_anomaly",
             "psi_current": psi_current,
@@ -538,7 +538,7 @@ if __name__ == "__main__":
         credential_id="test_api_key",
         scope="read",
         ttl_seconds=10,
-        entry500_context={"confidence": 0.75, "action": "read_email"}
+        verification_context={"confidence": 0.75, "action": "read_email"}
     )
 
     if token:
@@ -552,8 +552,8 @@ if __name__ == "__main__":
         verification = client.verify_token(token.token_id)
         print(f"   Valid: {verification.get('valid')}\n")
 
-        # Simulate Ψ anomaly
-        print("3. Simulating Ψ(t) anomaly (6σ deviation)...")
+        # Simulate anomaly score spike
+        print("3. Simulating anomaly score event (6σ deviation)...")
         anomaly_response = client.report_psi_anomaly(
             psi_current=0.95,
             psi_baseline=0.45,
