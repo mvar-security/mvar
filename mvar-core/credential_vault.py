@@ -121,7 +121,7 @@ class CredentialVault:
         self.default_ttl_seconds = default_ttl_seconds
         self.enable_audit_log = enable_audit_log
 
-        # Initialize QSEAL signer (Entry 500 SDK)
+        # Initialize QSEAL signer
         self.qseal = QSealSigner()
 
         # Token registry: {token_id: CredentialToken}

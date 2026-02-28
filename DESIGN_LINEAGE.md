@@ -60,7 +60,7 @@ MVAR shares structural primitives with prior work on agent identity continuity:
 | **Provenance tracking** | Scroll chains (session lineage) | Provenance graphs (tool-call lineage) |
 | **Policy enforcement** | Constitutional constraints | Sink policy rules |
 | **Cryptographic integrity** | QSEAL signatures on state | QSEAL signatures on nodes + decisions |
-| **Conservative propagation** | PAD emotional lattices | Integrity/confidentiality lattices |
+| **Conservative propagation** | Identity-state lattices | Integrity/confidentiality lattices |
 
 **Observation:** Agent identity continuity and agent execution control are structurally analogous problems — both require the same PPCI pattern class. The domain changes (identity vs. execution), but the primitives remain constant.
 

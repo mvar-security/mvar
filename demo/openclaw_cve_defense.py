@@ -320,7 +320,7 @@ def main():
     print("prompt injection defense via information flow control.")
     print()
     print("Built on:")
-    print("   • Entry 500 SDK (221+ tests, production-ready)")
+    print("   • Verification SDK (221+ tests, production-ready)")
     print("   • QSEAL cryptographic signatures (Ed25519)")
     print("   • FIDES-inspired IFC (Dual-lattice information flow control)")
     print("   • Research-grounded architecture (10+ citations)")

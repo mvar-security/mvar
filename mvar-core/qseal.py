@@ -1,12 +1,12 @@
 """
-MIRRA QSeal — Entry 500 Verification Sealing
-=============================================
+MVAR QSeal — Verification Sealing
+=================================
 
 Provides Ed25519 cryptographic signing for VerificationResult objects,
 making every verification audit trail non-repudiable.
 
 What this does:
-    Each VerificationResult produced by MIRRAVerifier can be sealed with
+    Each verification result can be sealed with
     an Ed25519 signature over its canonical JSON representation. The seal
     includes:
         - The proposal digest (SHA-256 of the proposal)
@@ -17,11 +17,11 @@ What this does:
         - The verification trace (if present)
 
     This makes the audit trail externally verifiable: given the public key,
-    anyone can confirm that a specific verification result was produced by
-    a specific MIRRA instance at a specific time with a specific confidence.
+    anyone can confirm that a specific verification result was produced at a
+    specific time with a specific confidence.
 
 Key management:
-    Keys are stored at: <project_root>/keys/entry500_signing/
+    Keys are stored at: <project_root>/keys/qseal_signing/
         private_key.pem   — Ed25519 private key (keep secret)
         public_key.pem    — Ed25519 public key (distribute freely)
 
@@ -52,7 +52,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-logger = logging.getLogger("mirra.qseal")
+logger = logging.getLogger("mvar.qseal")
 
 # ---------------------------------------------------------------------------
 # Crypto imports (guarded — cryptography package may not be installed)

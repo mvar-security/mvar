@@ -38,22 +38,15 @@ from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, field
 
-# Import MIRRA QSEAL engine only when full Ed25519 verify path is available.
-# Otherwise use deterministic local HMAC fallback for stable cross-env behavior.
+# Deterministic local HMAC fallback for stable cross-env behavior.
 verify_entry = None
-_mirra_sign_entry = None
-try:
-    from mirra_core.security.qseal_engine import sign_entry as _mirra_sign_entry  # type: ignore
-    from mirra_core.security.qseal_engine import verify_entry as _mirra_verify_entry  # type: ignore
-    verify_entry = _mirra_verify_entry
-except ImportError:
-    pass
+_external_sign_entry = None
 
-QSEAL_MODE = "ed25519" if verify_entry is not None else "hmac-sha256"
+QSEAL_MODE = "hmac-sha256"
 
 if QSEAL_MODE == "hmac-sha256":
     print(
-        "ℹ️  MIRRA QSEAL engine not detected — trust tracker uses HMAC-SHA256 fallback "
+        "ℹ️  QSEAL external signer not detected — trust tracker uses HMAC-SHA256 fallback "
         "(runtime policy traces may still show local Ed25519 signer)"
     )
 
@@ -66,9 +59,9 @@ def generate_signature(payload: dict) -> str:
 
 
 def sign_entry(entry: dict, agent_id: str = None) -> dict:
-    """Sign entry with MIRRA Ed25519 path when available, otherwise local HMAC."""
-    if QSEAL_MODE == "ed25519" and _mirra_sign_entry is not None:
-        return _mirra_sign_entry(entry, agent_id=agent_id)
+    """Sign entry with external Ed25519 path when available, otherwise local HMAC."""
+    if QSEAL_MODE == "ed25519" and _external_sign_entry is not None:
+        return _external_sign_entry(entry, agent_id=agent_id)
 
     signed = entry.copy()
     signed["qseal_signature"] = generate_signature(entry)

@@ -32,7 +32,7 @@ python -m pip install .
 - MCP
 - OpenClaw
 
-First-party wrappers for common agent frameworks. Planned (Phase 2): deeper framework integration packages and deployment cookbooks.
+First-party wrappers for common agent frameworks.
 
 See [docs/FIRST_PARTY_ADAPTERS.md](docs/FIRST_PARTY_ADAPTERS.md) for quickstarts and wrapper details.
 
@@ -95,7 +95,7 @@ MVAR functions as a deterministic reference monitor at execution sinks.
 ### 1. Provenance Taint Tracking
 - Labels all data with integrity (TRUSTED/UNTRUSTED) + confidentiality (PUBLIC/SENSITIVE/SECRET)
 - Conservative propagation: any untrusted input → all derived outputs untrusted
-- QSEAL Ed25519 signatures on provenance nodes (when enabled). In local demos, built-in signing is used; full MIRRA QSEAL engine is used when available.
+- QSEAL Ed25519 signatures on provenance nodes (when enabled). In local demos, built-in signing is used.
 
 ```python
 # User message → TRUSTED/PUBLIC
@@ -413,42 +413,18 @@ MVAR is a **policy enforcement layer**, not a detection system. It assumes untru
 - OS-level sandboxing exists (MVAR does not replace Docker/seccomp)
 - Deterministic policy enforcement layer is trusted (runtime not compromised)
 
-**Out of scope (Phase 1):**
+**Out of scope:**
 - Model weight poisoning
 - Browser-layer vulnerabilities (CSWSH, XSS)
 - Supply chain attacks on dependencies
-- Credential lifecycle management (Phase 2: vaulted execution)
+- Credential lifecycle management
 
 **Known limitations:**
 1. **Graph Write Trust** — If attacker gains write access to provenance graph process, they can inject TRUSTED nodes. Analogous to firewall rule compromise. Mitigation: QSEAL signature verification detects post-creation tampering.
 
-2. **Composition Attacks** — Base policy evaluates sinks independently. Optional cumulative hardening is now available via `MVAR_ENABLE_COMPOSITION_RISK=1` (session/principal risk budget with deterministic `STEP_UP/BLOCK` thresholds). Further tuning and expanded attack coverage continue in Phase 2.
+2. **Composition Attacks** — Base policy evaluates sinks independently. Optional cumulative hardening is available via `MVAR_ENABLE_COMPOSITION_RISK=1` (session/principal risk budget with deterministic `STEP_UP/BLOCK` thresholds).
 
-3. **Manual Sink Annotation** — Requires explicit sink registration (not automatic instrumentation). Roadmap: LangChain/OpenAI adapter hooks.
-
----
-
-## Roadmap
-
-### ✅ Phase 1 (Complete)
-- [x] Provenance taint system (dual lattices, QSEAL-signed)
-- [x] Capability runtime (deny-by-default)
-- [x] Sink policy engine (3 outcomes, deterministic)
-- [x] 50-vector validation suite
-- [x] Research citations
-
-### 🔨 Phase 2 (Weeks 2-3)
-- [ ] Vaulted executor (credential isolation)
-- [ ] Deep LangChain / OpenAI / MCP integration packages + deployment cookbooks
-- [ ] STEP_UP user confirmation flow
-- [ ] Expanded attack corpus and external adversarial contributions
-
-Execution plan: [docs/PHASE2_INTEGRATION_DEPLOYMENT_PLAN.md](docs/PHASE2_INTEGRATION_DEPLOYMENT_PLAN.md)
-
-### 🔨 Phase 3 (Weeks 4-5)
-- [ ] Formal verification (TLA+ spec)
-- [ ] Third-party penetration test
-- [ ] Audit trail standardization and deployment hardening
+3. **Manual Sink Annotation** — Requires explicit sink registration (not automatic instrumentation).
 
 ---
 
@@ -509,8 +485,6 @@ GitHub: [@mvar-security](https://github.com/mvar-security)
 - Pinned issue draft (copy/paste): [docs/issues/PINNED_OPENAI_BREAK_ATTEMPTS_ISSUE.md](docs/issues/PINNED_OPENAI_BREAK_ATTEMPTS_ISSUE.md)
 - Build adapters against the contract: [docs/ADAPTER_SPEC.md](docs/ADAPTER_SPEC.md)
 - Technical note: [docs/WHY_CONTROL_PLANE_NOT_FILTERS.md](docs/WHY_CONTROL_PLANE_NOT_FILTERS.md)
-- Outreach templates: [docs/outreach/HN_COMMENT_TEMPLATE.md](docs/outreach/HN_COMMENT_TEMPLATE.md), [docs/outreach/REDDIT_POST_TEMPLATE.md](docs/outreach/REDDIT_POST_TEMPLATE.md), [docs/outreach/X_THREAD_TEMPLATE.md](docs/outreach/X_THREAD_TEMPLATE.md), [docs/outreach/MAINTAINER_DM_TEMPLATE.md](docs/outreach/MAINTAINER_DM_TEMPLATE.md)
-- Release notes (`v1.0.4` draft): [docs/releases/v1.0.4.md](docs/releases/v1.0.4.md)
 - Open issues with reproductions, traces, and expected vs actual outcomes.
 
 ---

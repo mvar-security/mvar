@@ -33,23 +33,16 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 
-# Import MIRRA QSEAL engine only when full Ed25519 verify path is available.
-# Otherwise use deterministic local HMAC fallback for stable cross-env behavior.
+# Deterministic local HMAC fallback for stable cross-env behavior.
 verify_entry = None
-_mirra_sign_entry = None
-try:
-    from mirra_core.security.qseal_engine import sign_entry as _mirra_sign_entry  # type: ignore
-    from mirra_core.security.qseal_engine import verify_entry as _mirra_verify_entry  # type: ignore
-    verify_entry = _mirra_verify_entry
-except ImportError:
-    pass
+_external_sign_entry = None
 
 QSEAL_AVAILABLE = True
-QSEAL_MODE = "ed25519" if verify_entry is not None else "hmac-sha256"
+QSEAL_MODE = "hmac-sha256"
 
 if QSEAL_MODE == "hmac-sha256":
     print(
-        "ℹ️  MIRRA QSEAL engine not detected — decision ledger uses HMAC-SHA256 fallback "
+        "ℹ️  QSEAL external signer not detected — decision ledger uses HMAC-SHA256 fallback "
         "(runtime policy traces may still show local Ed25519 signer)"
     )
 
@@ -63,10 +56,10 @@ def generate_signature(payload: dict) -> str:
 
 def sign_entry(entry: dict, agent_id: str = "mvar_decision_ledger") -> dict:
     """
-    Sign entry with MIRRA Ed25519 path when available, otherwise local HMAC.
+    Sign entry with external Ed25519 path when available, otherwise local HMAC.
     """
-    if QSEAL_MODE == "ed25519" and _mirra_sign_entry is not None:
-        return _mirra_sign_entry(entry, agent_id=agent_id)
+    if QSEAL_MODE == "ed25519" and _external_sign_entry is not None:
+        return _external_sign_entry(entry, agent_id=agent_id)
 
     signed = entry.copy()
     signed["qseal_signature"] = generate_signature(entry)
@@ -134,7 +127,7 @@ class MVARDecisionLedger:
             pass
 
         # QSEAL signing (separate from enable_ledger flag)
-        # QSEAL_AVAILABLE is True for both MIRRA engine and local fallback signer.
+        # QSEAL_AVAILABLE is True for both optional external engine and local fallback signer.
         self.enable_qseal_signing = enable_qseal_signing and QSEAL_AVAILABLE
         self.qseal_mode = QSEAL_MODE if self.enable_qseal_signing else "none"
         self.max_future_skew_seconds = int(os.getenv("MVAR_MAX_FUTURE_SKEW_SECONDS", "300"))
@@ -235,7 +228,7 @@ class MVARDecisionLedger:
         # Compute meta_hash before signing
         scroll["meta_hash"] = self._compute_meta_hash(scroll)
 
-        # Sign using MIRRA QSEAL engine
+        # Sign using QSEAL engine
         signed = sign_entry(scroll, agent_id="mvar_decision_ledger")
         signed["qseal_algorithm"] = self.qseal_mode
         return signed
