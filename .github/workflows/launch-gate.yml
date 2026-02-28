@@ -39,6 +39,9 @@ jobs:
       - name: Run composition risk regression gate
         run: pytest -q tests/test_composition_risk.py
 
+      - name: Run declassification memory-scope regression gate
+        run: pytest -q tests/test_declassification_memory_scope.py
+
   openai-deep-integration:
     name: OpenAI Deep Integration (Python 3.12 + Docker smoke)
     runs-on: ubuntu-latest

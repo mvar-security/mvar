@@ -255,6 +255,13 @@ class SinkPolicy:
             "data/mvar_execution_token_nonces.jsonl",
         )
         self._execution_token_secret = os.getenv("MVAR_EXEC_TOKEN_SECRET", os.getenv("QSEAL_SECRET", "")).encode("utf-8")
+        self.require_declassify_token = os.getenv("MVAR_REQUIRE_DECLASSIFY_TOKEN", "1") == "1"
+        self.declassify_token_ttl_seconds = int(os.getenv("MVAR_DECLASSIFY_TOKEN_TTL_SECONDS", "300"))
+        self.declassify_token_one_time = os.getenv("MVAR_DECLASSIFY_TOKEN_ONE_TIME", "1") == "1"
+        self._declassify_token_secret = os.getenv(
+            "MVAR_DECLASSIFY_TOKEN_SECRET",
+            os.getenv("MVAR_EXEC_TOKEN_SECRET", os.getenv("QSEAL_SECRET", "")),
+        ).encode("utf-8")
         self.enable_composition_risk = os.getenv("MVAR_ENABLE_COMPOSITION_RISK", "0") == "1"
         self._secret_pattern = re.compile(
             r"(?i)(api[_-]?key|secret|token|password|passwd|authorization:|aws_access_key_id|aws_secret_access_key)"
@@ -271,6 +278,7 @@ class SinkPolicy:
         # STEP_UP approvals registry
         self.step_up_approvals: Dict[str, StepUpApproval] = {}
         self._consumed_execution_token_nonces: Dict[str, datetime] = {}
+        self._consumed_declassify_token_nonces: Dict[str, datetime] = {}
         self._execution_token_nonce_store = None
         if self.execution_token_one_time and self.execution_token_nonce_persist:
             try:
@@ -481,6 +489,136 @@ class SinkPolicy:
         except Exception:
             return False
 
+    @staticmethod
+    def _scope_rank(scope: str) -> int:
+        order = {"session": 0, "user": 1, "org": 2}
+        return order.get(scope, -1)
+
+    @staticmethod
+    def _normalize_scope(scope: Optional[str], default: str = "session") -> Optional[str]:
+        raw = (scope or default).strip().lower()
+        if raw in {"session", "user", "org"}:
+            return raw
+        return None
+
+    def issue_declassify_token(
+        self,
+        tool: str,
+        action: str,
+        target: str,
+        provenance_node_id: str,
+        source_scope: str,
+        target_scope: str,
+        confidentiality: str,
+        policy_hash: str,
+    ) -> Optional[Dict[str, Any]]:
+        """Issue signed declassification token for scoped memory writes."""
+        if not self._declassify_token_secret:
+            if self.fail_closed:
+                return None
+            return None
+
+        issued = datetime.now(timezone.utc)
+        expires = issued + timedelta(seconds=self.declassify_token_ttl_seconds)
+        payload = {
+            "intent": "declassify_memory_write",
+            "tool": tool,
+            "action": action,
+            "target_hash": hashlib.sha256(target.encode("utf-8")).hexdigest(),
+            "provenance_node_id": provenance_node_id,
+            "source_scope": source_scope,
+            "target_scope": target_scope,
+            "confidentiality": confidentiality,
+            "principal_id": self.principal_id,
+            "policy_hash": policy_hash,
+            "issued_at": issued.isoformat(),
+            "expires_at": expires.isoformat(),
+            "nonce": os.urandom(16).hex(),
+            "algorithm": "hmac-sha256",
+        }
+        payload_str = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+        payload["signature"] = hmac.new(
+            self._declassify_token_secret,
+            payload_str.encode("utf-8"),
+            hashlib.sha256,
+        ).hexdigest()
+        return payload
+
+    def _prune_consumed_declassify_tokens(self) -> None:
+        if not self._consumed_declassify_token_nonces:
+            return
+        now = datetime.now(timezone.utc)
+        stale = [nonce for nonce, expiry in self._consumed_declassify_token_nonces.items() if now >= expiry]
+        for nonce in stale:
+            self._consumed_declassify_token_nonces.pop(nonce, None)
+
+    def _consume_declassify_token_nonce(self, token: Dict[str, Any]) -> None:
+        if not self.declassify_token_one_time:
+            return
+        nonce = str(token.get("nonce", ""))
+        if not nonce:
+            return
+        try:
+            expires = datetime.fromisoformat(str(token.get("expires_at", "")).replace("Z", "+00:00"))
+        except Exception:
+            expires = datetime.now(timezone.utc) + timedelta(seconds=max(self.declassify_token_ttl_seconds, 1))
+        self._consumed_declassify_token_nonces[nonce] = expires
+
+    def verify_declassify_token(
+        self,
+        token: Dict[str, Any],
+        tool: str,
+        action: str,
+        target: str,
+        provenance_node_id: str,
+        source_scope: str,
+        target_scope: str,
+        confidentiality: str,
+        policy_hash: str,
+    ) -> bool:
+        if not token or not self._declassify_token_secret:
+            return False
+        try:
+            if token.get("intent") != "declassify_memory_write":
+                return False
+            if token.get("algorithm") != "hmac-sha256":
+                return False
+            nonce = str(token.get("nonce", ""))
+            if self.declassify_token_one_time:
+                if not nonce:
+                    return False
+                self._prune_consumed_declassify_tokens()
+                if nonce in self._consumed_declassify_token_nonces:
+                    return False
+            expires = datetime.fromisoformat(str(token.get("expires_at", "")).replace("Z", "+00:00"))
+            if datetime.now(timezone.utc) >= expires:
+                return False
+            if token.get("tool") != tool or token.get("action") != action:
+                return False
+            if token.get("provenance_node_id") != provenance_node_id:
+                return False
+            if token.get("source_scope") != source_scope or token.get("target_scope") != target_scope:
+                return False
+            if token.get("confidentiality") != confidentiality:
+                return False
+            if token.get("principal_id") != self.principal_id:
+                return False
+            if token.get("policy_hash") != policy_hash:
+                return False
+            if token.get("target_hash") != hashlib.sha256(target.encode("utf-8")).hexdigest():
+                return False
+            signature = token.get("signature", "")
+            verify_payload = {k: v for k, v in token.items() if k != "signature"}
+            verify_str = json.dumps(verify_payload, sort_keys=True, separators=(",", ":"))
+            expected_sig = hmac.new(
+                self._declassify_token_secret,
+                verify_str.encode("utf-8"),
+                hashlib.sha256,
+            ).hexdigest()
+            return hmac.compare_digest(signature, expected_sig)
+        except Exception:
+            return False
+
     def register_sink(self, sink: SinkClassification):
         """Register sink classification"""
         key = (sink.tool, sink.action)
@@ -574,7 +712,8 @@ class SinkPolicy:
         action: str,
         target: str,
         provenance_node_id: str,
-        parameters: Optional[Dict[str, Any]] = None
+        parameters: Optional[Dict[str, Any]] = None,
+        declassify_token: Optional[Dict[str, Any]] = None,
     ) -> PolicyDecision:
         """
         Deterministic policy evaluation.
@@ -585,6 +724,7 @@ class SinkPolicy:
             target: Target resource (e.g., domain, path, command)
             provenance_node_id: Provenance node ID for data
             parameters: Optional action parameters
+            declassify_token: Optional scoped declassification token
 
         Returns:
             PolicyDecision with outcome + full audit trail
@@ -706,6 +846,67 @@ class SinkPolicy:
         confidentiality = provenance_node.confidentiality
         evaluation_trace.append(f"integrity: {integrity.value}")
         evaluation_trace.append(f"confidentiality: {confidentiality.value}")
+
+        # 3b. Scoped memory writes require explicit declassification when widening scope.
+        if sink.tool == "memory" and sink.action == "write":
+            requested_scope = self._normalize_scope((parameters or {}).get("scope"), default="session")
+            source_scope = self._normalize_scope((parameters or {}).get("source_scope"), default="session")
+            if not requested_scope or not source_scope:
+                return self._make_decision(
+                    outcome=PolicyOutcome.BLOCK,
+                    reason="Invalid memory scope (allowed: session|user|org)",
+                    sink=sink,
+                    provenance_node_id=provenance_node_id,
+                    capability_granted=capability_granted,
+                    evaluation_trace=evaluation_trace + ["invalid_memory_scope → BLOCK"],
+                    target=target,
+                    policy_hash=policy_hash,
+                )
+
+            evaluation_trace.append(f"memory_source_scope: {source_scope}")
+            evaluation_trace.append(f"memory_target_scope: {requested_scope}")
+            widening = self._scope_rank(requested_scope) > self._scope_rank(source_scope)
+            evaluation_trace.append(f"memory_scope_widening: {widening}")
+
+            sensitive_conf = confidentiality in {ConfidentialityLevel.SENSITIVE, ConfidentialityLevel.SECRET}
+            if widening and sensitive_conf and self.require_declassify_token:
+                scoped_token = declassify_token
+                if scoped_token is None and parameters and isinstance(parameters.get("declassify_token"), dict):
+                    scoped_token = parameters.get("declassify_token")
+                if not scoped_token:
+                    return self._make_decision(
+                        outcome=PolicyOutcome.BLOCK,
+                        reason="Declassify token required for sensitive cross-scope memory write",
+                        sink=sink,
+                        provenance_node_id=provenance_node_id,
+                        capability_granted=capability_granted,
+                        evaluation_trace=evaluation_trace + ["declassify_token_missing → BLOCK"],
+                        target=target,
+                        policy_hash=policy_hash,
+                    )
+                if not self.verify_declassify_token(
+                    token=scoped_token,
+                    tool=tool,
+                    action=action,
+                    target=target,
+                    provenance_node_id=provenance_node_id,
+                    source_scope=source_scope,
+                    target_scope=requested_scope,
+                    confidentiality=confidentiality.value,
+                    policy_hash=policy_hash,
+                ):
+                    return self._make_decision(
+                        outcome=PolicyOutcome.BLOCK,
+                        reason="Declassify token invalid",
+                        sink=sink,
+                        provenance_node_id=provenance_node_id,
+                        capability_granted=capability_granted,
+                        evaluation_trace=evaluation_trace + ["declassify_token_invalid → BLOCK"],
+                        target=target,
+                        policy_hash=policy_hash,
+                    )
+                self._consume_declassify_token_nonce(scoped_token)
+                evaluation_trace.append("declassify_token_valid")
 
         # 4. Integrity check (untrusted data → sensitive sink)
         if sink.block_untrusted_integrity and integrity == IntegrityLevel.UNTRUSTED:
@@ -847,6 +1048,7 @@ class SinkPolicy:
         parameters: Optional[Dict[str, Any]] = None,
         execution_token: Optional[Dict[str, Any]] = None,
         pre_evaluated_decision: Optional[PolicyDecision] = None,
+        declassify_token: Optional[Dict[str, Any]] = None,
     ) -> PolicyDecision:
         """
         Evaluate policy and, when enabled, require a valid execution token.
@@ -883,6 +1085,7 @@ class SinkPolicy:
                 target=target,
                 provenance_node_id=provenance_node_id,
                 parameters=parameters,
+                declassify_token=declassify_token,
             )
         token = execution_token
         if token is None and pre_evaluated_decision is not None:
@@ -1094,6 +1297,19 @@ def register_common_sinks(policy: SinkPolicy):
         rationale="Data modification",
         require_capability=CapabilityType.FILESYSTEM_WRITE,
         block_untrusted_integrity=True
+    ))
+
+    # Scoped memory write (MEDIUM)
+    policy.register_sink(SinkClassification(
+        tool="memory",
+        action="write",
+        risk=SinkRisk.MEDIUM,
+        rationale="Persistent memory write (scope-controlled)",
+        require_capability=CapabilityType.IPC,
+        block_untrusted_integrity=True,
+        metadata={
+            "allowed_scopes": ["session", "user", "org"],
+        }
     ))
 
     # Network egress (MEDIUM, with confidentiality check)

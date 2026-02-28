@@ -18,9 +18,15 @@
   - Prevents policy re-evaluation drift between planning and execution boundaries.
   - Added regression tests for witness mismatch blocking and composition double-count prevention.
 
+- Added **deterministic declassification + scoped memory write gates** (Milestone 2a).
+  - `memory.write` now enforces scope widening rules (`session -> user -> org`).
+  - Sensitive/secret cross-scope writes require a signed declassify token.
+  - Added one-time declassify token replay rejection.
+
 - Expanded **regression gate coverage** in CI.
   - `launch-gate.yml` now includes composition-risk regression tests in addition to existing launch-gate and trilogy checks.
   - OpenAI Docker smoke now asserts persisted nonce replay blocking across container restart.
+  - Added declassification memory-scope regression tests.
 
 ## Compatibility
 
