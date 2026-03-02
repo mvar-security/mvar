@@ -25,7 +25,7 @@ echo "================================"
 echo ""
 
 # Step 1: Red-Team Gate Tests
-echo "1️⃣  Red-Team Gate Tests (5 tests)"
+echo "1️⃣  Red-Team Gate Tests (7 tests)"
 echo "   - Principal isolation"
 echo "   - Override privilege escalation prevention"
 echo "   - Execution token enforcement"
@@ -78,7 +78,7 @@ echo "3️⃣  Full Test Suite"
 echo "   - Trust score computation (6 tests)"
 echo "   - Policy adjustment (4 tests)"
 echo "   - State persistence (5 tests)"
-echo "   - Red-team gate (5 tests)"
+echo "   - Red-team gate (7 tests)"
 echo "   - First-party adapter wrappers (6 tests)"
 echo ""
 pytest -q || { echo "❌ TEST SUITE FAILED"; exit 1; }

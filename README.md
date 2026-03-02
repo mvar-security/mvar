@@ -65,7 +65,13 @@ register_common_sinks(policy)
 node = provenance_user_input(graph, "Summarize this doc")
 
 # Enforce at execution boundary
-decision = policy.evaluate("bash", "exec", provenance_node_id=node.node_id)
+decision = policy.evaluate(
+    tool="bash",
+    action="exec",
+    target="bash",
+    provenance_node_id=node.node_id,
+    parameters={"command": "echo hello"},
+)
 if decision.outcome == PolicyOutcome.BLOCK:
     raise RuntimeError(f"Blocked: {decision.reason}")
 ```
@@ -362,7 +368,7 @@ Before deployment, run the comprehensive security validation:
 ```
 
 This validates:
-- ✅ Red-team gate tests (5 tests) — Principal isolation, mechanism validation, token enforcement
+- ✅ Red-team gate tests (7 tests) — Principal isolation, mechanism validation, token enforcement
 - ✅ 50-vector attack corpus (9 categories) — All OWASP LLM Top 10 attack patterns
 - ✅ Full test suite (CI baseline) — Trust score, policy adjustment, state persistence, adapter wrappers
 

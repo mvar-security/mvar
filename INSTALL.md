@@ -93,7 +93,7 @@ python demo/openclaw_cve_defense.py
 
 1. **Read the architecture:** [DESIGN_LINEAGE.md](DESIGN_LINEAGE.md)
 2. **Explore the code:** Start with [quickstart.py](quickstart.py)
-3. **Integration guide:** Coming in Phase 2 (post-launch)
+3. **Integration guide:** [docs/AGENT_INTEGRATION_PLAYBOOK.md](docs/AGENT_INTEGRATION_PLAYBOOK.md)
 
 ---
 
