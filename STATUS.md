@@ -1,8 +1,8 @@
 # MVAR Security Status
 
-**Last updated:** 2026-03-02T07:26:19.814285+00:00  
-**Version:** 1.1.0  
-**Commit:** 444d77a3b58d6513e0fdb831ab733bb717e5952d
+**Last updated:** 2026-03-02T07:37:47.468649+00:00  
+**Version:** 1.2.0  
+**Commit:** e4a4ee51e0dacf9234ae5de1810f23e268c1a2f6
 
 ## Attack Corpus Coverage
 
