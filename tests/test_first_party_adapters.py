@@ -327,6 +327,42 @@ def test_openclaw_adapter_blocks_untrusted_shell():
         restore()
 
 
+def test_openclaw_adapter_blocks_unsafe_public_bind_misconfiguration():
+    graph, policy, restore = _build_policy()
+    old_bind = os.environ.get("OPENCLAW_BIND_HOST")
+    old_allow = os.environ.get("MVAR_ALLOW_PUBLIC_BIND")
+    old_auth = os.environ.get("MVAR_GATEWAY_AUTH_TOKEN")
+    os.environ["OPENCLAW_BIND_HOST"] = "0.0.0.0"
+    os.environ.pop("MVAR_ALLOW_PUBLIC_BIND", None)
+    os.environ.pop("MVAR_GATEWAY_AUTH_TOKEN", None)
+    try:
+        adapter = MVAROpenClawAdapter(policy, graph, strict=False)
+
+        def demo_tool(**kwargs):
+            return {"ok": True, "kwargs": kwargs}
+
+        dispatch = {"tool": "demo_tool", "action": "run", "target": "read_status", "args": {}}
+        try:
+            adapter.execute_tool_dispatch(dispatch=dispatch, tool_registry={"demo_tool": demo_tool})
+            assert False, "Expected guardrail failure for unsafe public bind"
+        except RuntimeError as exc:
+            assert "Public bind detected" in str(exc)
+    finally:
+        if old_bind is None:
+            os.environ.pop("OPENCLAW_BIND_HOST", None)
+        else:
+            os.environ["OPENCLAW_BIND_HOST"] = old_bind
+        if old_allow is None:
+            os.environ.pop("MVAR_ALLOW_PUBLIC_BIND", None)
+        else:
+            os.environ["MVAR_ALLOW_PUBLIC_BIND"] = old_allow
+        if old_auth is None:
+            os.environ.pop("MVAR_GATEWAY_AUTH_TOKEN", None)
+        else:
+            os.environ["MVAR_GATEWAY_AUTH_TOKEN"] = old_auth
+        restore()
+
+
 def test_non_strict_records_execution_error_without_executed_flag():
     graph, policy, restore = _build_policy()
     try:

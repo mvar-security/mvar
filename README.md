@@ -51,15 +51,15 @@ mvar-demo
 
 ### Minimal Integration (~10 lines)
 ```python
-from mvar_core.provenance import ProvenanceGraph, provenance_user_input
-from mvar_core.sink_policy import SinkPolicy, register_common_sinks, PolicyOutcome
-from mvar_core.capability import CapabilityRuntime
+from mvar_core.profiles import SecurityProfile, create_default_runtime
+from mvar_core.provenance import provenance_user_input
+from mvar_core.sink_policy import PolicyOutcome
 
-# Initialize control plane
-graph = ProvenanceGraph(enable_qseal=True)
-cap_runtime = CapabilityRuntime()
-policy = SinkPolicy(cap_runtime, graph, enable_qseal=True)
-register_common_sinks(policy)
+# Initialize control plane (balanced = secure-by-default)
+graph, policy, cap_runtime = create_default_runtime(
+    profile=SecurityProfile.BALANCED,
+    enable_qseal=True,
+)
 
 # Track input provenance
 node = provenance_user_input(graph, "Summarize this doc")
@@ -75,6 +75,12 @@ decision = policy.evaluate(
 if decision.outcome == PolicyOutcome.BLOCK:
     raise RuntimeError(f"Blocked: {decision.reason}")
 ```
+
+Profiles:
+- `SecurityProfile.STRICT` — strongest runtime hardening (production)
+- `SecurityProfile.BALANCED` — recommended default
+- `SecurityProfile.MONITOR` — visibility-first rollout mode
+See [docs/SECURITY_PROFILES.md](docs/SECURITY_PROFILES.md).
 
 **Complete example:** [examples/custom_agent.py](examples/custom_agent.py)  
 **Installation guide:** [INSTALL.md](INSTALL.md)
@@ -373,6 +379,36 @@ This validates:
 - ✅ Full test suite (CI baseline) — Trust score, policy adjustment, state persistence, adapter wrappers
 
 **Exit code 0 = Ready for production deployment**
+
+### Security Scorecard Artifact
+
+Every push/PR can generate a machine-readable security snapshot via:
+
+```bash
+python3 scripts/generate_security_scorecard.py
+python3 scripts/update_status_md.py
+```
+
+CI workflow: `.github/workflows/security-scorecard.yml`  
+Artifacts: `reports/security_scorecard.json` and [`STATUS.md`](STATUS.md)
+
+### Network Exposure Guardrails (Ollama/OpenClaw Class)
+
+Public incident class (widely discussed on March 2, 2026): local-model services accidentally exposed by binding to `0.0.0.0` without authentication. Public reporting cited roughly **175,000 exposed instances** in this misconfiguration class.
+
+MVAR now includes deterministic exposure guardrail checks:
+- `mvar-doctor` fails if it detects public bind variables without explicit allow + auth.
+- Docker/OpenAI demo startup enforces the same guardrail path.
+
+Run guardrail diagnostics:
+
+```bash
+mvar-doctor
+```
+
+Required for intentional public bind:
+- `MVAR_ALLOW_PUBLIC_BIND=1`
+- an auth token/key (for example `MVAR_GATEWAY_AUTH_TOKEN` or `OPENCLAW_API_KEY`)
 
 ## Reproducibility and Supply Chain
 

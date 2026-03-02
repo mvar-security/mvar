@@ -69,6 +69,11 @@ Expected:
 - Container runtime hardening (read-only rootfs, dropped capabilities) is still required.
 - MVAR enforces sink boundaries; it does not replace OS sandboxing.
 - Keep `MVAR_EXEC_TOKEN_SECRET` in a secret store (not hardcoded).
+- Avoid accidental public bind. If you intentionally bind to non-loopback, set:
+  - `MVAR_ALLOW_PUBLIC_BIND=1`
+  - one auth token/key (`MVAR_GATEWAY_AUTH_TOKEN`, `OPENCLAW_API_KEY`, or equivalent)
+  - otherwise `mvar-doctor` and startup guardrails fail closed.
+- This guardrail targets the March 2, 2026 incident class (roughly 175,000 reported exposed local-model instances from public-bind misconfiguration).
 
 ## 5) Failure modes and troubleshooting
 

@@ -18,6 +18,7 @@ dist/
 data/
 *.jsonl
 artifacts/
+reports/
 
 # Keys and secrets
 keys/

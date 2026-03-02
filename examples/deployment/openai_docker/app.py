@@ -1,11 +1,15 @@
 """Minimal Docker demo for MVAR OpenAI Responses runtime."""
 
+import os
+
 try:
     from mvar_core.capability import CapabilityGrant, CapabilityRuntime, CapabilityType, build_shell_tool
+    from mvar_core.exposure_guardrails import enforce_network_exposure_guardrails
     from mvar_core.provenance import ProvenanceGraph
     from mvar_core.sink_policy import SinkClassification, SinkPolicy, SinkRisk, register_common_sinks
 except ImportError:
     from capability import CapabilityGrant, CapabilityRuntime, CapabilityType, build_shell_tool
+    from exposure_guardrails import enforce_network_exposure_guardrails
     from provenance import ProvenanceGraph
     from sink_policy import SinkClassification, SinkPolicy, SinkRisk, register_common_sinks
 
@@ -42,6 +46,9 @@ def build_runtime() -> MVAROpenAIResponsesRuntime:
 
 
 def main() -> None:
+    # Guard against accidental public bind deployment without auth/explicit override.
+    enforce_network_exposure_guardrails(os.environ)
+
     runtime = build_runtime()
 
     def demo_tool(**kwargs):

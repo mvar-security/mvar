@@ -1,8 +1,13 @@
 from __future__ import annotations
 
+import os
 from typing import Any, Callable, Dict, Optional
 
 from .base import AdapterExecutionResult, MVARExecutionAdapter
+try:
+    from mvar_core.exposure_guardrails import enforce_network_exposure_guardrails
+except Exception:  # pragma: no cover
+    from exposure_guardrails import enforce_network_exposure_guardrails  # type: ignore
 
 
 class MVAROpenClawAdapter(MVARExecutionAdapter):
@@ -16,6 +21,9 @@ class MVAROpenClawAdapter(MVARExecutionAdapter):
         source_text: str = "",
         source_is_untrusted: bool = True,
     ) -> AdapterExecutionResult:
+        # Fail-closed if runtime/network bind posture is unsafe.
+        enforce_network_exposure_guardrails(os.environ)
+
         tool_name = (
             dispatch.get("tool")
             or dispatch.get("name")

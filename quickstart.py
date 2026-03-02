@@ -1,9 +1,7 @@
 """
-MVAR Quickstart — 3-Line Integration Example
+MVAR Quickstart — secure-by-default bootstrap example.
 
-This demonstrates the simplest possible MVAR integration.
-This is a working, end-to-end example showing real prompt injection defense.
-
+This demonstrates the simplest possible MVAR integration using profile presets.
 For advanced integration patterns, start with README.md and INSTALL.md.
 """
 
@@ -12,17 +10,19 @@ from pathlib import Path
 
 # Try importing as installed package first, fall back to development mode
 try:
-    from mvar_core.provenance import ProvenanceGraph, provenance_user_input, provenance_external_doc
-    from mvar_core.capability import CapabilityRuntime, build_shell_tool
-    from mvar_core.sink_policy import SinkPolicy, register_common_sinks, PolicyOutcome
+    from mvar_core.profiles import create_default_runtime, SecurityProfile
+    from mvar_core.provenance import provenance_user_input, provenance_external_doc
+    from mvar_core.capability import build_shell_tool
+    from mvar_core.sink_policy import PolicyOutcome
 except ImportError:
     # Development mode: add mvar-core to path
     MVAR_CORE = Path(__file__).parent / "mvar-core"
     sys.path.insert(0, str(MVAR_CORE))
 
-    from provenance import ProvenanceGraph, provenance_user_input, provenance_external_doc
-    from capability import CapabilityRuntime, build_shell_tool
-    from sink_policy import SinkPolicy, register_common_sinks, PolicyOutcome
+    from profiles import create_default_runtime, SecurityProfile
+    from provenance import provenance_user_input, provenance_external_doc
+    from capability import build_shell_tool
+    from sink_policy import PolicyOutcome
 
 def quickstart_example():
     """
@@ -33,13 +33,11 @@ def quickstart_example():
 
     print("=== MVAR Quickstart Example ===\n")
 
-    # Initialize control plane
-    provenance_graph = ProvenanceGraph(enable_qseal=True)
-    capability_runtime = CapabilityRuntime()
-    sink_policy = SinkPolicy(capability_runtime, provenance_graph, enable_qseal=True)
-
-    # Register common sinks
-    register_common_sinks(sink_policy)
+    # Initialize control plane with secure-by-default profile.
+    provenance_graph, sink_policy, capability_runtime = create_default_runtime(
+        profile=SecurityProfile.BALANCED,
+        enable_qseal=True,
+    )
 
     # Register bash capability (with whitelist)
     bash_manifest = build_shell_tool(

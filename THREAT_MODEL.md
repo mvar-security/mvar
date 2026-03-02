@@ -1,8 +1,8 @@
 # MVAR Threat Model & Assumptions
 
-**Version:** 1.0.0
-**Last Updated:** February 24, 2026
-**Status:** Phase 1 Validated
+**Version:** 1.1.0
+**Last Updated:** March 2, 2026
+**Status:** Phase 1 Hardened
 
 ---
 
@@ -273,14 +273,16 @@ Decision Matrix:
 
 ### Red-Team Gate
 
-5 security property tests:
+7 security property tests:
 1. Principal isolation (no cross-principal trust contamination)
 2. Override privilege escalation prevention
 3. Execution token enforcement
 4. Mechanism validation (no capability-only blocks)
 5. Ledger auditability (QSEAL-signed scrolls)
+6. Execution token replay defense (one-time nonce consumption)
+7. Persisted nonce replay defense across restart
 
-**Result:** 5/5 passing
+**Result:** 7/7 passing
 
 ---
 

@@ -8,6 +8,31 @@ import os
 import sys
 from pathlib import Path
 
+try:
+    from mvar_core import __version__ as MVAR_VERSION  # type: ignore
+except Exception:
+    init_file = (Path(__file__).resolve().parents[1] / "mvar-core" / "__init__.py")
+    MVAR_VERSION = "unknown"
+    if init_file.exists():
+        for line in init_file.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if line.startswith("__version__"):
+                MVAR_VERSION = line.split("=", 1)[1].strip().strip("\"'")
+                break
+
+try:
+    from mvar_core.exposure_guardrails import (
+        check_network_exposure_guardrails,
+        render_network_exposure_report,
+    )
+except Exception:  # pragma: no cover - fallback for source-tree invocation
+    MVAR_CORE = Path(__file__).resolve().parents[1] / "mvar-core"
+    if str(MVAR_CORE) not in sys.path:
+        sys.path.insert(0, str(MVAR_CORE))
+    from exposure_guardrails import (  # type: ignore
+        check_network_exposure_guardrails,
+        render_network_exposure_report,
+    )
 
 def _safe_import_qseal():
     try:
@@ -27,26 +52,39 @@ def _doctor() -> int:
 
     qseal_dir = Path(os.getenv("MVAR_QSEAL_DIR", str(Path.home() / ".mvar" / "qseal")))
     print(f"QSEAL dir: {qseal_dir}")
+    status_ok = True
 
     QSealSigner = _safe_import_qseal()
     if QSealSigner is None:
         print("QSEAL signer import: FAIL")
-        return 1
+        status_ok = False
+    else:
+        try:
+            signer = QSealSigner()
+            print(f"QSEAL algorithm: {signer.algorithm}")
+        except Exception as exc:
+            print(f"QSEAL signer init: FAIL ({exc})")
+            status_ok = False
 
-    try:
-        signer = QSealSigner()
-        print(f"QSEAL algorithm: {signer.algorithm}")
-    except Exception as exc:
-        print(f"QSEAL signer init: FAIL ({exc})")
-        return 1
+    exposure_result = check_network_exposure_guardrails(os.environ)
+    print(render_network_exposure_report(os.environ))
+    if not exposure_result.ok:
+        print(
+            "Guardrail failure: public bind without explicit allow + authentication. "
+            "See March 2, 2026 exposed-instance incident class (~175,000 reported exposures)."
+        )
+        status_ok = False
 
     if "site-packages" not in str(Path(__file__).resolve()):
         print("Install source: running from source tree")
     else:
         print("Install source: site-packages")
 
-    print("Status: OK")
-    return 0
+    if status_ok:
+        print("Status: OK")
+        return 0
+    print("Status: FAIL")
+    return 1
 
 
 def main() -> None:
@@ -56,7 +94,7 @@ def main() -> None:
     print("  System Information")
     print("=" * 70)
     print()
-    print("Version: 1.0.0")
+    print(f"Version: {MVAR_VERSION}")
     print("Author: Shawn Cohen")
     print("License: Apache 2.0")
     print()
