@@ -11,6 +11,39 @@ Information flow control + cryptographic provenance tracking for LLM agent runti
 
 ---
 
+## Verify in 60 Seconds
+
+Run from repo root:
+
+```bash
+pytest -q
+./scripts/launch-gate.sh
+python3 scripts/generate_security_scorecard.py
+python3 scripts/update_status_md.py
+```
+
+What this proves:
+- launch gate + full suite are green
+- adversarial corpus is blocked (`50/50`)
+- benign corpus has zero false blocks (`200/200`)
+- machine-readable status is regenerated in `STATUS.md`
+
+## Why v1.2.0 Matters
+
+- **Secure by default:** runtime profile bootstrap (`STRICT`, `BALANCED`, `MONITOR`) removes opt-in hardening drift.
+- **Operationally credible:** deterministic guardrails now address public-bind incident class risk (`0.0.0.0`/`::`) with fail-closed checks.
+- **Publicly verifiable:** one command path regenerates proofs (`launch-gate`, scorecard, status artifact).
+
+## Trust & Verification
+
+- Runtime trust map: [TRUST.md](TRUST.md)
+- Current security snapshot: [STATUS.md](STATUS.md)
+- Profile behavior: [docs/SECURITY_PROFILES.md](docs/SECURITY_PROFILES.md)
+- Public-bind incident class and mitigation: [docs/INCIDENT_CLASS_PUBLIC_BIND_MAR2_2026.md](docs/INCIDENT_CLASS_PUBLIC_BIND_MAR2_2026.md)
+- Scorecard workflow: [.github/workflows/security-scorecard.yml](.github/workflows/security-scorecard.yml)
+
+---
+
 ## 3-Minute Quickstart
 
 ### Install
@@ -525,6 +558,7 @@ GitHub: [@mvar-security](https://github.com/mvar-security)
 - Submit adversarial vectors: [docs/ATTACK_VECTOR_SUBMISSIONS.md](docs/ATTACK_VECTOR_SUBMISSIONS.md)
 - Open OpenAI break attempts with repros: [.github/ISSUE_TEMPLATE/openai_break_attempt.md](.github/ISSUE_TEMPLATE/openai_break_attempt.md)
 - Pinned issue draft (copy/paste): [docs/issues/PINNED_OPENAI_BREAK_ATTEMPTS_ISSUE.md](docs/issues/PINNED_OPENAI_BREAK_ATTEMPTS_ISSUE.md)
+- Pinned discussion draft for cloner feedback: [docs/issues/PINNED_CLONER_FEEDBACK_DISCUSSION.md](docs/issues/PINNED_CLONER_FEEDBACK_DISCUSSION.md)
 - Build adapters against the contract: [docs/ADAPTER_SPEC.md](docs/ADAPTER_SPEC.md)
 - Technical note: [docs/WHY_CONTROL_PLANE_NOT_FILTERS.md](docs/WHY_CONTROL_PLANE_NOT_FILTERS.md)
 - Open issues with reproductions, traces, and expected vs actual outcomes.
