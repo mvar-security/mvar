@@ -2,7 +2,7 @@
 
 **Last updated:** 2026-03-04T03:26:55.066368+00:00  
 **Version:** 1.2.1  
-**Commit:** 9f99a895b5818948627ee4c38cced1b521549342
+**Commit:** 788e9bbafaebaa75e3c2fec792e06e0cf2a2e52a
 
 ## Attack Corpus Coverage
 

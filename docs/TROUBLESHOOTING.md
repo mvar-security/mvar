@@ -102,7 +102,7 @@ python scripts/update_status_md.py
 ```
 
 Expected for `v1.2.x` baseline:
-- `261 passed`
+- `267 passed`
 - launch gate: PASS
 - attack corpus: `50/50 blocked`
 - benign corpus: `200/200 passed`, `0 false blocks`

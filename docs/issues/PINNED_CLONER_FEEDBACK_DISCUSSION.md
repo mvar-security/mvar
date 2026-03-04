@@ -28,7 +28,7 @@ python3 scripts/update_status_md.py
 ```
 
 Current reproducible baseline:
-- 261 tests passing
+- 267 tests passing
 - 50/50 adversarial vectors blocked
 - 200/200 benign corpus passing (0 false blocks)
 
