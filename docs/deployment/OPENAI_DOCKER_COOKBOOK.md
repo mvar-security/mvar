@@ -73,7 +73,7 @@ Expected:
   - `MVAR_ALLOW_PUBLIC_BIND=1`
   - one auth token/key (`MVAR_GATEWAY_AUTH_TOKEN`, `OPENCLAW_API_KEY`, or equivalent)
   - otherwise `mvar-doctor` and startup guardrails fail closed.
-- This guardrail targets the March 2, 2026 incident class (roughly 175,000 reported exposed local-model instances from public-bind misconfiguration).
+- This guardrail targets the March 2, 2026 incident class with widespread public reporting of exposed instances in this misconfiguration class.
 
 ## 5) Failure modes and troubleshooting
 

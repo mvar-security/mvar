@@ -26,7 +26,7 @@ This plan converts the "secure-by-default + public proof" initiative into a conc
 
 ### Day 5-7: Exposure Guardrails
 - Add deterministic checks for public bind (`0.0.0.0`/`::`) with required explicit allow + auth.
-- Document this as a direct mitigation for the March 2, 2026 incident class (~175,000 reported exposed instances).
+- Document this as a direct mitigation for the March 2, 2026 incident class with widespread public reporting of exposed instances in this misconfiguration class.
 - Enforce via `mvar-doctor` and deployment demo startup path.
 - Add regression tests for:
   - blocked unsafe public bind
