@@ -13,13 +13,20 @@ Information flow control + cryptographic provenance tracking for LLM agent runti
 
 ## Verify in 60 Seconds
 
-Run from repo root:
+Fast path (works even if you forgot to activate the right venv):
 
 ```bash
-pytest -q
+bash scripts/doctor-environment.sh
+bash scripts/quick-verify.sh
+```
+
+Manual path (from repo root):
+
+```bash
+python -m pytest -q
 ./scripts/launch-gate.sh
-python3 scripts/generate_security_scorecard.py
-python3 scripts/update_status_md.py
+python scripts/generate_security_scorecard.py
+python scripts/update_status_md.py
 ```
 
 What this proves:
@@ -40,6 +47,7 @@ What this proves:
 - Current security snapshot: [STATUS.md](STATUS.md)
 - Profile behavior: [docs/SECURITY_PROFILES.md](docs/SECURITY_PROFILES.md)
 - Public-bind incident class and mitigation: [docs/INCIDENT_CLASS_PUBLIC_BIND_MAR2_2026.md](docs/INCIDENT_CLASS_PUBLIC_BIND_MAR2_2026.md)
+- Troubleshooting matrix: [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)
 - Scorecard workflow: [.github/workflows/security-scorecard.yml](.github/workflows/security-scorecard.yml)
 
 ---

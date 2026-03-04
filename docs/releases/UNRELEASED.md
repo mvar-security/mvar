@@ -18,3 +18,28 @@
   - added “Verify in 60 Seconds”
   - added “Why v1.2.0 Matters”
   - added “Trust & Verification” index
+
+## Operator Reliability
+
+- Added environment preflight script: `scripts/doctor-environment.sh`
+  - warns on wrong working directory
+  - warns on wrong/absent venv
+  - prints canonical validation path
+
+- Added one-command verification script: `scripts/quick-verify.sh`
+  - bootstraps local `.venv` if missing
+  - installs package with build-isolation fallback
+  - runs pytest, launch-gate, scorecard generation, status render
+
+- Added troubleshooting playbook: `docs/TROUBLESHOOTING.md`
+  - maps common copy/paste failures to deterministic fixes
+  - includes canonical validation commands + expected outcomes
+
+- Hardened repro installer: `scripts/clean_venv_repro.sh`
+  - packaging tool upgrade now warning-tolerant in restricted networks
+  - retries install without build isolation
+  - falls back to `--system-site-packages` when setuptools is missing in isolated venvs
+
+- Hardened ledger runner: `scripts/run_ledger_tests.sh`
+  - uses pytest execution path (instead of raw file execution)
+  - supports active-venv and shell pytest discovery fallback
