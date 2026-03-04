@@ -11,6 +11,8 @@ MVAR now includes first-party adapter wrappers for common agent ecosystems.
 - `mvar_adapters.autogen.MVARAutoGenAdapter`
 - `mvar_adapters.crewai.MVARCrewAIAdapter`
 - `mvar_adapters.openclaw.MVAROpenClawAdapter`
+- `mvar_adapters.google_adk.MVARGoogleADKAdapter`
+- `mvar_adapters.openai_agents.MVAROpenAIAgentsAdapter`
 
 All wrappers enforce the same default boundary:
 
@@ -28,6 +30,9 @@ Quickstart examples:
 - `examples/adapters/autogen_quickstart.py`
 - `examples/adapters/crewai_quickstart.py`
 - `examples/adapters/openclaw_quickstart.py`
+- `examples/adapters/google_adk_quickstart.py`
+- `examples/adapters/openai_agents_quickstart.py`
+- `examples/adapters/openclaw_runtime_quickstart.py`
 
 ## Example: OpenAI tool call wrapper
 
