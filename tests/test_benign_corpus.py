@@ -19,10 +19,13 @@ def _build_policy():
     old_require = os.environ.get("MVAR_REQUIRE_EXECUTION_TOKEN")
     old_bundle = os.environ.get("MVAR_REQUIRE_SIGNED_POLICY_BUNDLE")
     old_fail_closed = os.environ.get("MVAR_FAIL_CLOSED")
+    old_exec_token_secret = os.environ.get("MVAR_EXEC_TOKEN_SECRET")
 
     os.environ["MVAR_REQUIRE_EXECUTION_TOKEN"] = "1"
     os.environ["MVAR_REQUIRE_SIGNED_POLICY_BUNDLE"] = "0"
     os.environ["MVAR_FAIL_CLOSED"] = "1"
+    # Keep this test self-contained across CI/local environments.
+    os.environ["MVAR_EXEC_TOKEN_SECRET"] = "ci_benign_corpus_secret"
 
     graph = ProvenanceGraph(enable_qseal=False)
     runtime = CapabilityRuntime()
@@ -64,6 +67,11 @@ def _build_policy():
             os.environ.pop("MVAR_FAIL_CLOSED", None)
         else:
             os.environ["MVAR_FAIL_CLOSED"] = old_fail_closed
+
+        if old_exec_token_secret is None:
+            os.environ.pop("MVAR_EXEC_TOKEN_SECRET", None)
+        else:
+            os.environ["MVAR_EXEC_TOKEN_SECRET"] = old_exec_token_secret
 
     return graph, policy, _restore_env
 
