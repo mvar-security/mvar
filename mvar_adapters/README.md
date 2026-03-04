@@ -9,6 +9,8 @@ This folder contains first-party wrappers for common agent/tool ecosystems:
 - `autogen.py` → `MVARAutoGenAdapter`
 - `crewai.py` → `MVARCrewAIAdapter`
 - `openclaw.py` → `MVAROpenClawAdapter`
+- `openai_agents.py` → `MVAROpenAIAgentsAdapter`
+- `google_adk.py` → `MVARGoogleADKAdapter`
 
 These wrappers enforce the execution boundary by default:
 
@@ -187,6 +189,55 @@ adapter = MVAROpenClawAdapter(policy, graph, strict=True)
 result = adapter.execute_tool_dispatch(
     dispatch={"tool": "bash", "action": "exec", "args": {"command": "echo hello"}},
     tool_registry={"bash": run_shell},
+    source_text="OpenClaw planner output",
+    source_is_untrusted=True,
+)
+```
+
+## 8) OpenAI Agents SDK Tool Call Wrapper
+
+```python
+from mvar_adapters import MVAROpenAIAgentsAdapter
+
+adapter = MVAROpenAIAgentsAdapter(policy, graph, strict=True)
+result = adapter.execute_tool_call_item(
+    tool_call_item={
+        "type": "tool_call",
+        "name": "bash",
+        "arguments": {"action": "exec", "command": "echo hello"},
+    },
+    tool_registry={"bash": run_shell},
+    source_text="OpenAI Agents planner output",
+    source_is_untrusted=True,
+)
+```
+
+## 9) Google ADK Tool Invocation Wrapper
+
+```python
+from mvar_adapters import MVARGoogleADKAdapter
+
+adapter = MVARGoogleADKAdapter(policy, graph, strict=True)
+result = adapter.execute_tool_invocation(
+    invocation={
+        "tool_name": "bash",
+        "args": {"action": "exec", "command": "echo hello"},
+    },
+    tool_registry={"bash": run_shell},
+    source_text="Google ADK planner output",
+    source_is_untrusted=True,
+)
+```
+
+## 10) OpenClaw Runtime Integration Wrapper
+
+```python
+from mvar_openclaw import MVAROpenClawRuntime
+
+runtime = MVAROpenClawRuntime(policy, graph, strict=False)
+batch = runtime.execute_planner_dispatches(
+    planner_payload={"dispatches": [dispatch_1, dispatch_2]},
+    tool_registry=tool_registry,
     source_text="OpenClaw planner output",
     source_is_untrusted=True,
 )

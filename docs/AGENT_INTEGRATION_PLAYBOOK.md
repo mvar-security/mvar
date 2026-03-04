@@ -55,6 +55,20 @@ result = adapter.execute_tool_dispatch(
 
 Hook point: OpenClaw tool router used by the agent loop.
 
+For centralized planner dispatch loops, use `MVAROpenClawRuntime`:
+
+```python
+from mvar_openclaw import MVAROpenClawRuntime
+
+runtime = MVAROpenClawRuntime(policy, graph, strict=False)
+batch = runtime.execute_planner_dispatches(
+    planner_payload=planner_payload,
+    tool_registry=tool_registry,
+    source_text="OpenClaw planner output",
+    source_is_untrusted=True,
+)
+```
+
 ### LangChain
 
 Use `MVARLangChainAdapter`.
@@ -101,6 +115,42 @@ batch = runtime.execute_response(
 ```
 
 Hook point: centralized response/tool-call dispatch loop.
+
+### OpenAI Agents SDK
+
+Use `MVAROpenAIAgentsAdapter`.
+
+```python
+from mvar_adapters import MVAROpenAIAgentsAdapter
+
+adapter = MVAROpenAIAgentsAdapter(policy, graph, strict=True)
+result = adapter.execute_tool_call_item(
+    tool_call_item=tool_call_item,
+    tool_registry=tool_registry,
+    source_text="agents planner output",
+    source_is_untrusted=True,
+)
+```
+
+Hook point: tool-call item dispatch path in the agent runner.
+
+### Google ADK
+
+Use `MVARGoogleADKAdapter`.
+
+```python
+from mvar_adapters import MVARGoogleADKAdapter
+
+adapter = MVARGoogleADKAdapter(policy, graph, strict=True)
+result = adapter.execute_tool_invocation(
+    invocation=invocation,
+    tool_registry=tool_registry,
+    source_text="google adk planner output",
+    source_is_untrusted=True,
+)
+```
+
+Hook point: tool invocation path in the ADK dispatcher.
 
 ### MCP
 

@@ -8,6 +8,8 @@ from .claude import MVARClaudeToolAdapter
 from .autogen import MVARAutoGenAdapter
 from .crewai import MVARCrewAIAdapter
 from .openclaw import MVAROpenClawAdapter
+from .google_adk import MVARGoogleADKAdapter
+from .openai_agents import MVAROpenAIAgentsAdapter
 
 __all__ = [
     "MVARExecutionAdapter",
@@ -18,4 +20,6 @@ __all__ = [
     "MVARAutoGenAdapter",
     "MVARCrewAIAdapter",
     "MVAROpenClawAdapter",
+    "MVARGoogleADKAdapter",
+    "MVAROpenAIAgentsAdapter",
 ]

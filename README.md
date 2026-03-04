@@ -53,7 +53,7 @@ adapter = MVAROpenAIAdapter(policy, graph, strict=True)
 result = adapter.execute_tool_call(tool_call, tool_registry, source_text="model output")
 ```
 
-For adapter quickstarts across LangChain, OpenAI, Claude, MCP, AutoGen, CrewAI, and OpenClaw, see [docs/FIRST_PARTY_ADAPTERS.md](docs/FIRST_PARTY_ADAPTERS.md).
+For adapter quickstarts across LangChain, OpenAI, OpenAI Agents SDK, Google ADK, Claude, MCP, AutoGen, CrewAI, and OpenClaw, see [docs/FIRST_PARTY_ADAPTERS.md](docs/FIRST_PARTY_ADAPTERS.md).
 
 ## Verify in 60 Seconds
 
@@ -111,6 +111,8 @@ python -m pip install .
 ### Ready-to-Use Adapters
 - LangChain
 - OpenAI
+- OpenAI Agents SDK
+- Google ADK
 - Claude
 - AutoGen
 - CrewAI
@@ -124,6 +126,12 @@ See [docs/FIRST_PARTY_ADAPTERS.md](docs/FIRST_PARTY_ADAPTERS.md) for quickstarts
 ### Run the Demo
 ```bash
 mvar-demo
+```
+
+Concrete OpenClaw runtime integration demo (real dispatch batch through enforcement boundary):
+
+```bash
+python demo/openclaw_runtime_integration_demo.py
 ```
 
 **Expected output:**
