@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import re
 import subprocess
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -57,11 +58,11 @@ def main() -> int:
         raise RuntimeError("Attack corpus execution failed")
     attack_total, attack_blocked = _parse_attack_summary(attack_output)
 
-    benign_code, benign_output = _run(["pytest", "-q", "tests/test_benign_corpus.py"])
+    benign_code, benign_output = _run([sys.executable, "-m", "pytest", "-q", "tests/test_benign_corpus.py"])
     benign_passed = _parse_passed_count(benign_output)
     benign_failures = 0 if benign_code == 0 else max(1, 200 - benign_passed)
 
-    redteam_code, redteam_output = _run(["pytest", "-q", "tests/test_launch_redteam_gate.py"])
+    redteam_code, redteam_output = _run([sys.executable, "-m", "pytest", "-q", "tests/test_launch_redteam_gate.py"])
     redteam_passed = _parse_passed_count(redteam_output)
 
     scorecard = {
