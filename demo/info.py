@@ -71,7 +71,7 @@ def _doctor() -> int:
     if not exposure_result.ok:
         print(
             "Guardrail failure: public bind without explicit allow + authentication. "
-            "See March 2, 2026 exposed-instance incident class (~175,000 reported exposures)."
+            "See March 2, 2026 incident class with widespread public reporting of exposed instances."
         )
         status_ok = False
 

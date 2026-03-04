@@ -303,7 +303,7 @@ def main():
     print_section("SUMMARY")
     print("OpenClaw Prompt Injection:")
     print("   • 1-click Remote Code Execution")
-    print("   • 135,000+ exposed instances worldwide")
+    print("   • Widespread public reporting of exposed instances in this misconfiguration class")
     print("   • Unfixable architectural flaw (credential + execution co-location)")
     print()
     print("MVAR Defense:")

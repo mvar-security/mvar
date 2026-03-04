@@ -446,7 +446,7 @@ Artifacts: `reports/security_scorecard.json` and [`STATUS.md`](STATUS.md)
 
 ### Network Exposure Guardrails (Ollama/OpenClaw Class)
 
-Public incident class (widely discussed on March 2, 2026): local-model services accidentally exposed by binding to `0.0.0.0` without authentication. Public reporting cited roughly **175,000 exposed instances** in this misconfiguration class.
+Public incident class (widely discussed on March 2, 2026): local-model services accidentally exposed by binding to `0.0.0.0` without authentication, with widespread public reporting of exposed instances in this misconfiguration class.
 
 MVAR now includes deterministic exposure guardrail checks:
 - `mvar-doctor` fails if it detects public bind variables without explicit allow + auth.
