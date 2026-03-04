@@ -101,7 +101,7 @@ python scripts/generate_security_scorecard.py
 python scripts/update_status_md.py
 ```
 
-Expected for `v1.2.0` baseline:
+Expected for `v1.2.x` baseline:
 - `261 passed`
 - launch gate: PASS
 - attack corpus: `50/50 blocked`

@@ -1,8 +1,6 @@
 # MVAR — MIRRA Verified Agent Runtime
 
-**Deterministic sink enforcement against prompt-injection-driven tool misuse**
-
-Information flow control + cryptographic provenance tracking for LLM agent runtimes.
+Deterministic enforcement that prevents prompt-injection attacks from reaching tool execution in LLM agents.
 
 [![Phase 1 Stabilized](https://img.shields.io/badge/Phase%201-Stabilized-success)](./)
 [![Research Lineage](https://img.shields.io/badge/Research%20Lineage-IFC%20%7C%20Capability%20Security%20%7C%20NCSC%20Guidance-blue)](./)
@@ -10,6 +8,52 @@ Information flow control + cryptographic provenance tracking for LLM agent runti
 [![Validation](https://img.shields.io/badge/Attack%20Vectors-50%20tested-brightgreen)](./)
 
 ---
+
+## Use MVAR in Your Agent (2 Ways)
+
+### Mode A — Library integration
+
+Direct integration (~10 lines).
+
+```python
+from mvar_core.profiles import SecurityProfile, create_default_runtime
+from mvar_core.provenance import provenance_user_input
+from mvar_core.sink_policy import PolicyOutcome
+
+graph, policy, _ = create_default_runtime(
+    profile=SecurityProfile.BALANCED,
+    enable_qseal=True,
+)
+
+node = provenance_user_input(graph, "Summarize this doc")
+decision = policy.evaluate(
+    tool="bash",
+    action="exec",
+    target="bash",
+    provenance_node_id=node.node_id,
+    parameters={"command": "echo hello"},
+)
+if decision.outcome == PolicyOutcome.BLOCK:
+    raise RuntimeError(f"Blocked: {decision.reason}")
+```
+
+### Mode B — Framework adapter
+
+Framework adapter (drop-in).
+
+```python
+from mvar_core.profiles import SecurityProfile, create_default_runtime
+from mvar_adapters import MVAROpenAIAdapter
+
+graph, policy, _ = create_default_runtime(
+    profile=SecurityProfile.BALANCED,
+    enable_qseal=True,
+)
+adapter = MVAROpenAIAdapter(policy, graph, strict=True)
+result = adapter.execute_tool_call(tool_call, tool_registry, source_text="model output")
+```
+
+For adapter quickstarts across LangChain, OpenAI, Claude, MCP, AutoGen, CrewAI, and OpenClaw, see [docs/FIRST_PARTY_ADAPTERS.md](docs/FIRST_PARTY_ADAPTERS.md).
 
 ## Verify in 60 Seconds
 
@@ -30,12 +74,12 @@ python scripts/update_status_md.py
 ```
 
 What this proves:
-- launch gate + full suite are green
-- adversarial corpus is blocked (`50/50`)
-- benign corpus has zero false blocks (`200/200`)
-- machine-readable status is regenerated in `STATUS.md`
+- Launch gate and full suite are green in CI.
+- Attack corpus blocks 50/50 under current policy.
+- Benign corpus has zero false blocks.
+- Exact current numbers are published in [STATUS.md](STATUS.md).
 
-## Why v1.2.0 Matters
+## What's New in v1.2.x
 
 - **Secure by default:** runtime profile bootstrap (`STRICT`, `BALANCED`, `MONITOR`) removes opt-in hardening drift.
 - **Operationally credible:** deterministic guardrails now address public-bind incident class risk (`0.0.0.0`/`::`) with fail-closed checks.
@@ -89,39 +133,6 @@ mvar-demo
    Zero code execution
    Full audit trail available
 ```
-
-### Minimal Integration (~10 lines)
-```python
-from mvar_core.profiles import SecurityProfile, create_default_runtime
-from mvar_core.provenance import provenance_user_input
-from mvar_core.sink_policy import PolicyOutcome
-
-# Initialize control plane (balanced = secure-by-default)
-graph, policy, cap_runtime = create_default_runtime(
-    profile=SecurityProfile.BALANCED,
-    enable_qseal=True,
-)
-
-# Track input provenance
-node = provenance_user_input(graph, "Summarize this doc")
-
-# Enforce at execution boundary
-decision = policy.evaluate(
-    tool="bash",
-    action="exec",
-    target="bash",
-    provenance_node_id=node.node_id,
-    parameters={"command": "echo hello"},
-)
-if decision.outcome == PolicyOutcome.BLOCK:
-    raise RuntimeError(f"Blocked: {decision.reason}")
-```
-
-Profiles:
-- `SecurityProfile.STRICT` — strongest runtime hardening (production)
-- `SecurityProfile.BALANCED` — recommended default
-- `SecurityProfile.MONITOR` — visibility-first rollout mode
-See [docs/SECURITY_PROFILES.md](docs/SECURITY_PROFILES.md).
 
 **Complete example:** [examples/custom_agent.py](examples/custom_agent.py)  
 **Installation guide:** [INSTALL.md](INSTALL.md)

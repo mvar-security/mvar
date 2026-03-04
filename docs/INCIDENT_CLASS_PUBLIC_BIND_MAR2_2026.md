@@ -2,7 +2,7 @@
 
 ## Summary
 
-A widely discussed incident class on March 2, 2026 involved local-model services exposed to the internet due to binding to non-loopback addresses (`0.0.0.0` / `::`) without authentication. Public reporting cited roughly 175,000 exposed instances.
+A widely discussed incident class on March 2, 2026 involved local-model services exposed to the internet due to binding to non-loopback addresses (`0.0.0.0` / `::`) without authentication, with widespread public reporting of exposed instances in this misconfiguration class.
 
 MVAR addresses this class with deterministic runtime guardrails.
 
