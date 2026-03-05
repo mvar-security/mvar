@@ -6,3 +6,4 @@ try:
 except Exception:  # pragma: no cover
     # Keep import failures non-fatal for minimal environments.
     pass
+# Calibration comment
