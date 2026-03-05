@@ -1,7 +1,8 @@
 # CI/runtime dependencies for security workflows and gates.
 # Generated lockfile (with hashes) is requirements-ci.txt.
 
-numpy>=1.26.0,<3.0.0
+# Keep py3.10-compatible lock target for launch-gate matrix.
+numpy==2.2.6
 cryptography==46.0.5
 prometheus-client>=0.20.0,<1.0.0
 opentelemetry-api>=1.24.0,<2.0.0
