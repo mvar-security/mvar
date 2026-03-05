@@ -1,5 +1,19 @@
 # Unreleased
 
+## Maintainer and Adoption Hygiene
+
+- Added integration-request intake template:
+  - `.github/ISSUE_TEMPLATE/integration_request.md`
+  - captures target framework, boundary scope, and acceptance criteria for first-party adapters
+
+- Added integration playbook contact link:
+  - `.github/ISSUE_TEMPLATE/config.yml`
+  - routes requesters to `docs/AGENT_INTEGRATION_PLAYBOOK.md` before filing
+
+- Refreshed repository security status metadata:
+  - `STATUS.md` regenerated from scorecard artifact
+  - package/runtime version strings aligned to `1.2.2`
+
 ## Adoption and Trust Surfaces
 
 - Added top-level trust map: `TRUST.md`
