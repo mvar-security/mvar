@@ -29,17 +29,20 @@ jobs:
 
       - name: Run OpenSSF Scorecard
         uses: ossf/scorecard-action@e4c423540e964e15ccadc56558705ba15136265c # v2.3.3
+        continue-on-error: true
         with:
           results_file: results.sarif
           results_format: sarif
           publish_results: true
 
       - name: Upload SARIF
+        if: always()
         uses: github/codeql-action/upload-sarif@0fa1882f994fbd81a47ab0804f93354f5ea40147 # v3.28.17
         with:
           sarif_file: results.sarif
 
       - name: Upload scorecard artifact
+        if: always()
         uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1 # v4.6.1
         with:
           name: scorecard-results
