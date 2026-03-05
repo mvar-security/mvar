@@ -4,7 +4,7 @@ WORKDIR /app
 
 COPY . /app
 
-RUN python -m pip install -U pip setuptools wheel \
-    && python -m pip install .
+RUN python -m pip install --require-hashes -r /app/requirements-ci.txt \
+    && ln -s /app/mvar-core /app/mvar_core
 
 CMD ["python", "examples/deployment/openai_docker/app.py"]

@@ -19,6 +19,16 @@ cd "$REPO_ROOT"
 
 MVAR_GATE_VERBOSE="${MVAR_GATE_VERBOSE:-0}"
 
+# Source-tree fallback for environments that do not install the package wheel.
+if ! python3 - <<'PY' >/dev/null 2>&1
+import importlib.util, sys
+sys.exit(0 if importlib.util.find_spec("mvar_core") else 1)
+PY
+then
+  ln -sfn mvar-core mvar_core
+  export PYTHONPATH="$REPO_ROOT:${PYTHONPATH:-}"
+fi
+
 # Select a single Python interpreter for all gate steps.
 if [[ -n "${VIRTUAL_ENV:-}" ]] && [[ -x "${VIRTUAL_ENV}/bin/python" ]]; then
   PYTHON_BIN="${VIRTUAL_ENV}/bin/python"

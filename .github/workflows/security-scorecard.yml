@@ -22,11 +22,12 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install package + test deps
+      - name: Install pinned dependencies
         run: |
-          python -m pip install -U pip setuptools wheel
-          python -m pip install .
-          python -m pip install pytest
+          python -m pip install --require-hashes -r requirements-ci.txt
+
+      - name: Prepare source import path
+        run: ln -sfn mvar-core mvar_core
 
       - name: Generate scorecard
         run: python3 scripts/generate_security_scorecard.py
