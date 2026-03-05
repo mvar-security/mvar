@@ -1,3 +1,5 @@
+SPDX-License-Identifier: Apache-2.0
+
 # Apache License 2.0
 
 Copyright 2026 Shawn Cohen, Universal Media

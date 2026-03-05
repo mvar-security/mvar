@@ -1,19 +1,27 @@
 """Minimal Docker demo for MVAR OpenAI Responses runtime."""
 
 import os
+import sys
+from pathlib import Path
 
 try:
     from mvar_core.capability import CapabilityGrant, CapabilityRuntime, CapabilityType, build_shell_tool
     from mvar_core.exposure_guardrails import enforce_network_exposure_guardrails
     from mvar_core.provenance import ProvenanceGraph
     from mvar_core.sink_policy import SinkClassification, SinkPolicy, SinkRisk, register_common_sinks
+    from mvar_openai import MVAROpenAIResponsesRuntime
 except ImportError:
+    REPO_ROOT = Path(__file__).resolve().parents[3]
+    MVAR_CORE_DIR = REPO_ROOT / "mvar-core"
+    for candidate in (str(REPO_ROOT), str(MVAR_CORE_DIR)):
+        if candidate not in sys.path:
+            sys.path.insert(0, candidate)
     from capability import CapabilityGrant, CapabilityRuntime, CapabilityType, build_shell_tool
     from exposure_guardrails import enforce_network_exposure_guardrails
     from provenance import ProvenanceGraph
     from sink_policy import SinkClassification, SinkPolicy, SinkRisk, register_common_sinks
+    from mvar_openai import MVAROpenAIResponsesRuntime
 
-from mvar_openai import MVAROpenAIResponsesRuntime
 
 
 def build_runtime() -> MVAROpenAIResponsesRuntime:
