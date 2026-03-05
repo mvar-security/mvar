@@ -627,4 +627,3 @@ GitHub: [@mvar-security](https://github.com/mvar-security)
 ---
 
 *MVAR: Deterministic sink enforcement against prompt-injection-driven tool misuse via information flow control and cryptographic provenance tracking.*
-# Trigger workflows
