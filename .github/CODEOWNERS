@@ -1,0 +1,7 @@
+# MVAR Code Owners
+# Review required from these owners for all changes
+
+* @Sdvegas21
+*.yml @Sdvegas21
+*.yaml @Sdvegas21
+/mvar-core/ @Sdvegas21
