@@ -44,7 +44,7 @@ setup(
     ],
     extras_require={
         "dev": [
-            "pytest>=7.4.0,<8.0.0",
+            "pytest>=7.4.0,<10.0.0",
             "pytest-cov>=4.1.0,<5.0.0",
         ],
         "observability": [
