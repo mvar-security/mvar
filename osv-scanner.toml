@@ -1,0 +1,30 @@
+# Ignore legacy NumPy advisories that are false positives for current pinned
+# versions in this repository's dependency lockfiles.
+
+[[IgnoredVulns]]
+id = "GHSA-2fc2-6r4j-p65h"
+reason = "False positive for current pinned NumPy versions; advisory affects historical NumPy ranges."
+
+[[IgnoredVulns]]
+id = "GHSA-5545-2q6w-2gh6"
+reason = "False positive for current pinned NumPy versions; advisory affects historical NumPy ranges."
+
+[[IgnoredVulns]]
+id = "GHSA-9fq2-x9r6-wfmf"
+reason = "False positive for current pinned NumPy versions; advisory affects historical NumPy ranges."
+
+[[IgnoredVulns]]
+id = "GHSA-cw6w-4rcx-xphc"
+reason = "False positive for current pinned NumPy versions; advisory affects historical NumPy ranges."
+
+[[IgnoredVulns]]
+id = "GHSA-f7c7-j99h-c22f"
+reason = "False positive for current pinned NumPy versions; advisory affects historical NumPy ranges."
+
+[[IgnoredVulns]]
+id = "GHSA-fpfv-jqm9-f5jm"
+reason = "False positive for current pinned NumPy versions; advisory affects historical NumPy ranges."
+
+[[IgnoredVulns]]
+id = "GHSA-frgw-fgh6-9g52"
+reason = "False positive for current pinned NumPy versions; advisory affects historical NumPy ranges."
