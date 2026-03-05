@@ -32,6 +32,7 @@ jobs:
         with:
           results_file: results.sarif
           results_format: sarif
+          repo_token: ${{ secrets.SCORECARD_REPO_TOKEN || github.token }}
           publish_results: ${{ github.event_name != 'workflow_dispatch' }}
 
       - name: Upload SARIF
