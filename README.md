@@ -5,6 +5,7 @@ Deterministic enforcement that prevents prompt-injection attacks from reaching t
 [![Phase 1 Stabilized](https://img.shields.io/badge/Phase%201-Stabilized-success)](./)
 [![Research Lineage](https://img.shields.io/badge/Research%20Lineage-IFC%20%7C%20Capability%20Security%20%7C%20NCSC%20Guidance-blue)](./)
 [![Launch Gate](https://github.com/mvar-security/mvar/actions/workflows/launch-gate.yml/badge.svg)](https://github.com/mvar-security/mvar/actions/workflows/launch-gate.yml)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/mvar-security/mvar/badge)](https://scorecard.dev/viewer/?uri=github.com/mvar-security/mvar)
 [![Validation](https://img.shields.io/badge/Attack%20Vectors-50%20tested-brightgreen)](./)
 
 ---
@@ -84,6 +85,8 @@ What this proves:
 - **Secure by default:** runtime profile bootstrap (`STRICT`, `BALANCED`, `MONITOR`) removes opt-in hardening drift.
 - **Operationally credible:** deterministic guardrails now address public-bind incident class risk (`0.0.0.0`/`::`) with fail-closed checks.
 - **Publicly verifiable:** one command path regenerates proofs (`launch-gate`, scorecard, status artifact).
+- **Prometheus-ready metrics:** optional `/metrics` endpoint for verification counters, durations, and error signals.
+- **OpenTelemetry-ready traces:** optional span instrumentation for verification pipeline stages.
 
 ## Trust & Verification
 
@@ -92,6 +95,7 @@ What this proves:
 - Profile behavior: [docs/SECURITY_PROFILES.md](docs/SECURITY_PROFILES.md)
 - Public-bind incident class and mitigation: [docs/INCIDENT_CLASS_PUBLIC_BIND_MAR2_2026.md](docs/INCIDENT_CLASS_PUBLIC_BIND_MAR2_2026.md)
 - Troubleshooting matrix: [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)
+- Observability guide: [docs/OBSERVABILITY.md](docs/OBSERVABILITY.md)
 - Scorecard workflow: [.github/workflows/security-scorecard.yml](.github/workflows/security-scorecard.yml)
 
 ---
@@ -132,6 +136,13 @@ Concrete OpenClaw runtime integration demo (real dispatch batch through enforcem
 
 ```bash
 python demo/openclaw_runtime_integration_demo.py
+```
+
+Observability demos:
+
+```bash
+python examples/metrics_demo.py
+python examples/otel_demo.py
 ```
 
 **Expected output:**

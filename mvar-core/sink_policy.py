@@ -52,6 +52,7 @@ try:
     from .decision_ledger import MVARDecisionLedger
     from .composition_risk import CompositionRiskEngine
     from .execution_token_nonce_store import ExecutionTokenNonceStore
+    from .observability import MVARObservability
     from .policy_bundle import (
         build_signed_bundle,
         canonicalize_sinks,
@@ -70,6 +71,7 @@ except ImportError:
     from decision_ledger import MVARDecisionLedger
     from composition_risk import CompositionRiskEngine
     from execution_token_nonce_store import ExecutionTokenNonceStore
+    from observability import MVARObservability
     from policy_bundle import (
         build_signed_bundle,
         canonicalize_sinks,
@@ -254,6 +256,7 @@ class SinkPolicy:
         self.provenance_graph = provenance_graph
         self.enable_qseal = enable_qseal
         self.fail_closed = os.getenv("MVAR_FAIL_CLOSED", "1") == "1"
+        self.observability = MVARObservability.from_env()
         self.max_command_len = int(os.getenv("MVAR_MAX_COMMAND_LEN", "1024"))
         self.max_blob_len = int(os.getenv("MVAR_MAX_BLOB_LEN", "32768"))
         self._expected_policy_hash = os.getenv("MVAR_EXPECTED_POLICY_HASH", "").strip()
@@ -807,124 +810,138 @@ class SinkPolicy:
         evaluation_trace = []
         policy_hash = self._compute_policy_hash()
         evaluation_trace.append(f"policy_hash: {policy_hash}")
-        if not self._startup_policy_verified and not self._startup_policy_error:
-            self._startup_policy_error = self._verify_startup_policy_bundle(policy_hash)
-            self._startup_policy_verified = self._startup_policy_error is None
-        if self._startup_policy_error:
-            return self._make_decision(
-                outcome=PolicyOutcome.BLOCK,
-                reason=f"Startup policy verification failed: {self._startup_policy_error}",
-                sink=SinkClassification(
-                    tool=tool,
-                    action=action,
-                    risk=SinkRisk.CRITICAL,
-                    rationale="Startup policy verification failed",
-                ),
-                provenance_node_id=provenance_node_id,
-                capability_granted=False,
-                evaluation_trace=evaluation_trace + ["startup_policy_verification_failed → BLOCK"],
-                target=target,
-                policy_hash=policy_hash,
-            )
-        evaluation_trace.append("startup_policy_verification: ok")
+
+        with self.observability.trace_layer(
+            "startup_policy_verification",
+            attributes={"mvar.tool": tool, "mvar.action": action},
+        ):
+            if not self._startup_policy_verified and not self._startup_policy_error:
+                self._startup_policy_error = self._verify_startup_policy_bundle(policy_hash)
+                self._startup_policy_verified = self._startup_policy_error is None
+            if self._startup_policy_error:
+                self.observability.record_error("startup_policy_verification", "verification_failed")
+                return self._make_decision(
+                    outcome=PolicyOutcome.BLOCK,
+                    reason=f"Startup policy verification failed: {self._startup_policy_error}",
+                    sink=SinkClassification(
+                        tool=tool,
+                        action=action,
+                        risk=SinkRisk.CRITICAL,
+                        rationale="Startup policy verification failed",
+                    ),
+                    provenance_node_id=provenance_node_id,
+                    capability_granted=False,
+                    evaluation_trace=evaluation_trace + ["startup_policy_verification_failed → BLOCK"],
+                    target=target,
+                    policy_hash=policy_hash,
+                )
+            evaluation_trace.append("startup_policy_verification: ok")
 
         # 0. NEW: Check for active override FIRST (before normal evaluation)
-        if self.decision_ledger:
-            sink_obj = self.get_sink(tool, action)
-            if sink_obj:
-                override = self.decision_ledger.check_override(
-                    sink=sink_obj,
-                    target=target,
-                    principal_id=self.principal_id,
-                )
-                if override:
-                    # Override matched - allow the operation
-                    evaluation_trace.append(f"override_matched: {override['scroll_id']}")
-                    return self._make_decision(
-                        outcome=PolicyOutcome.ALLOW,
-                        reason=f"User override active (ID: {override['scroll_id']}, expires: {override['ttl_expiry']})",
+        with self.observability.trace_layer("ledger_override_lookup"):
+            if self.decision_ledger:
+                sink_obj = self.get_sink(tool, action)
+                if sink_obj:
+                    override = self.decision_ledger.check_override(
                         sink=sink_obj,
+                        target=target,
+                        principal_id=self.principal_id,
+                    )
+                    if override:
+                        # Override matched - allow the operation
+                        evaluation_trace.append(f"override_matched: {override['scroll_id']}")
+                        return self._make_decision(
+                            outcome=PolicyOutcome.ALLOW,
+                            reason=f"User override active (ID: {override['scroll_id']}, expires: {override['ttl_expiry']})",
+                            sink=sink_obj,
+                            provenance_node_id=provenance_node_id,
+                            capability_granted=True,
+                            evaluation_trace=evaluation_trace,
+                            target=target,
+                            policy_hash=policy_hash
+                        )
+
+        # 1. Get sink classification
+        with self.observability.trace_layer("sink_classification"):
+            sink = self.get_sink(tool, action)
+            if not sink:
+                # Unknown sink → deny by default
+                self.observability.record_error("sink_classification", "unknown_sink")
+                return self._make_decision(
+                    outcome=PolicyOutcome.BLOCK,
+                    reason=f"Unknown sink: {tool}.{action} (not registered)",
+                    sink=SinkClassification(
+                        tool=tool,
+                        action=action,
+                        risk=SinkRisk.CRITICAL,
+                        rationale="Unknown sink - deny by default"
+                    ),
+                    provenance_node_id=provenance_node_id,
+                    capability_granted=False,
+                    evaluation_trace=["sink_unknown → BLOCK"],
+                    target=target,
+                    policy_hash=policy_hash
+                )
+
+            evaluation_trace.append(f"sink_classified: {sink.risk.value}")
+            boundary_error = self._enforce_target_boundary(sink, target, parameters)
+            if boundary_error:
+                self.observability.record_error("sink_classification", "boundary_violation")
+                return self._make_decision(
+                    outcome=PolicyOutcome.BLOCK,
+                    reason=f"Strict boundary denied target: {boundary_error}",
+                    sink=sink,
+                    provenance_node_id=provenance_node_id,
+                    capability_granted=False,
+                    evaluation_trace=evaluation_trace + [f"boundary_violation: {boundary_error} → BLOCK"],
+                    target=target,
+                    policy_hash=policy_hash
+                )
+
+        # 2. Capability check
+        capability_granted = True
+        with self.observability.trace_layer("capability_check"):
+            if sink.require_capability:
+                capability_granted = self.capability_runtime.check_capability(
+                    tool=tool,
+                    cap_type=sink.require_capability,
+                    target=target
+                )
+                evaluation_trace.append(f"capability_check: {capability_granted}")
+
+                if not capability_granted:
+                    self.observability.record_error("capability_check", "capability_denied")
+                    return self._make_decision(
+                        outcome=PolicyOutcome.BLOCK,
+                        reason=f"Capability denied: {tool} lacks {sink.require_capability.value} for {target}",
+                        sink=sink,
                         provenance_node_id=provenance_node_id,
-                        capability_granted=True,
+                        capability_granted=False,
                         evaluation_trace=evaluation_trace,
                         target=target,
                         policy_hash=policy_hash
                     )
 
-        # 1. Get sink classification
-        sink = self.get_sink(tool, action)
-        if not sink:
-            # Unknown sink → deny by default
-            return self._make_decision(
-                outcome=PolicyOutcome.BLOCK,
-                reason=f"Unknown sink: {tool}.{action} (not registered)",
-                sink=SinkClassification(
-                    tool=tool,
-                    action=action,
-                    risk=SinkRisk.CRITICAL,
-                    rationale="Unknown sink - deny by default"
-                ),
-                provenance_node_id=provenance_node_id,
-                capability_granted=False,
-                evaluation_trace=["sink_unknown → BLOCK"],
-                target=target,
-                policy_hash=policy_hash
-            )
-
-        evaluation_trace.append(f"sink_classified: {sink.risk.value}")
-        boundary_error = self._enforce_target_boundary(sink, target, parameters)
-        if boundary_error:
-            return self._make_decision(
-                outcome=PolicyOutcome.BLOCK,
-                reason=f"Strict boundary denied target: {boundary_error}",
-                sink=sink,
-                provenance_node_id=provenance_node_id,
-                capability_granted=False,
-                evaluation_trace=evaluation_trace + [f"boundary_violation: {boundary_error} → BLOCK"],
-                target=target,
-                policy_hash=policy_hash
-            )
-
-        # 2. Capability check
-        capability_granted = True
-        if sink.require_capability:
-            capability_granted = self.capability_runtime.check_capability(
-                tool=tool,
-                cap_type=sink.require_capability,
-                target=target
-            )
-            evaluation_trace.append(f"capability_check: {capability_granted}")
-
-            if not capability_granted:
+        # 3. Get provenance node
+        with self.observability.trace_layer("provenance_check"):
+            provenance_node = self.provenance_graph.nodes.get(provenance_node_id)
+            if not provenance_node:
+                self.observability.record_error("provenance_check", "provenance_missing")
                 return self._make_decision(
                     outcome=PolicyOutcome.BLOCK,
-                    reason=f"Capability denied: {tool} lacks {sink.require_capability.value} for {target}",
+                    reason=f"Provenance node not found: {provenance_node_id}",
                     sink=sink,
                     provenance_node_id=provenance_node_id,
-                    capability_granted=False,
-                    evaluation_trace=evaluation_trace,
+                    capability_granted=capability_granted,
+                    evaluation_trace=evaluation_trace + ["provenance_missing → BLOCK"],
                     target=target,
                     policy_hash=policy_hash
                 )
 
-        # 3. Get provenance node
-        provenance_node = self.provenance_graph.nodes.get(provenance_node_id)
-        if not provenance_node:
-            return self._make_decision(
-                outcome=PolicyOutcome.BLOCK,
-                reason=f"Provenance node not found: {provenance_node_id}",
-                sink=sink,
-                provenance_node_id=provenance_node_id,
-                capability_granted=capability_granted,
-                evaluation_trace=evaluation_trace + ["provenance_missing → BLOCK"],
-                target=target,
-                policy_hash=policy_hash
-            )
-
-        integrity = provenance_node.integrity
-        confidentiality = provenance_node.confidentiality
-        evaluation_trace.append(f"integrity: {integrity.value}")
-        evaluation_trace.append(f"confidentiality: {confidentiality.value}")
+            integrity = provenance_node.integrity
+            confidentiality = provenance_node.confidentiality
+            evaluation_trace.append(f"integrity: {integrity.value}")
+            evaluation_trace.append(f"confidentiality: {confidentiality.value}")
 
         # 3b. Scoped memory writes require explicit declassification when widening scope.
         if sink.tool == "memory" and sink.action == "write":
@@ -1041,67 +1058,70 @@ class SinkPolicy:
                 )
 
         # 6. Risk-based decision (capability granted, integrity/confidentiality acceptable)
-        if sink.risk == SinkRisk.LOW:
-            outcome = PolicyOutcome.ALLOW
-            reason = "Low-risk sink with acceptable provenance"
-        elif sink.risk == SinkRisk.MEDIUM and integrity == IntegrityLevel.TRUSTED:
-            outcome = PolicyOutcome.ALLOW
-            reason = "Medium-risk sink with TRUSTED integrity"
-        elif sink.risk == SinkRisk.HIGH and integrity == IntegrityLevel.TRUSTED:
-            outcome = PolicyOutcome.ALLOW
-            reason = "High-risk sink with TRUSTED integrity"
-        elif sink.risk == SinkRisk.CRITICAL:
-            # CRITICAL always requires STEP_UP, even for trusted provenance
-            outcome = PolicyOutcome.STEP_UP
-            reason = "CRITICAL risk sink requires explicit user confirmation"
-        else:
-            # Default: STEP_UP for ambiguous cases
-            outcome = PolicyOutcome.STEP_UP
-            reason = f"{sink.risk.value} risk + {integrity.value} integrity = STEP_UP for safety"
+        with self.observability.trace_layer("risk_decision"):
+            if sink.risk == SinkRisk.LOW:
+                outcome = PolicyOutcome.ALLOW
+                reason = "Low-risk sink with acceptable provenance"
+            elif sink.risk == SinkRisk.MEDIUM and integrity == IntegrityLevel.TRUSTED:
+                outcome = PolicyOutcome.ALLOW
+                reason = "Medium-risk sink with TRUSTED integrity"
+            elif sink.risk == SinkRisk.HIGH and integrity == IntegrityLevel.TRUSTED:
+                outcome = PolicyOutcome.ALLOW
+                reason = "High-risk sink with TRUSTED integrity"
+            elif sink.risk == SinkRisk.CRITICAL:
+                # CRITICAL always requires STEP_UP, even for trusted provenance
+                outcome = PolicyOutcome.STEP_UP
+                reason = "CRITICAL risk sink requires explicit user confirmation"
+            else:
+                # Default: STEP_UP for ambiguous cases
+                outcome = PolicyOutcome.STEP_UP
+                reason = f"{sink.risk.value} risk + {integrity.value} integrity = STEP_UP for safety"
 
-        evaluation_trace.append(f"base_decision: {outcome.value}")
+            evaluation_trace.append(f"base_decision: {outcome.value}")
 
         # 7. NEW: Apply trust oracle adjustment BEFORE creating decision (audit consistency)
         trust_adjusted = False
-        if self.trust_tracker:
-            try:
-                trust_score = self.trust_tracker.compute_trust_score(principal_id=self.principal_id)
-                evaluation_trace.append(f"trust_score: {trust_score:.2f}")
-                evaluation_trace.append(f"principal_id: {self.principal_id}")
-            except Exception as exc:
-                if self.fail_closed:
-                    return self._make_decision(
-                        outcome=PolicyOutcome.BLOCK,
-                        reason=f"Trust oracle failure (fail-closed): {exc}",
-                        sink=sink,
-                        provenance_node_id=provenance_node_id,
-                        capability_granted=capability_granted,
-                        evaluation_trace=evaluation_trace + ["trust_oracle_failure → BLOCK"],
-                        target=target,
-                        policy_hash=policy_hash
-                    )
-                trust_score = 0.0
-                evaluation_trace.append(f"trust_oracle_error_ignored: {exc}")
+        with self.observability.trace_layer("trust_adjustment"):
+            if self.trust_tracker:
+                try:
+                    trust_score = self.trust_tracker.compute_trust_score(principal_id=self.principal_id)
+                    evaluation_trace.append(f"trust_score: {trust_score:.2f}")
+                    evaluation_trace.append(f"principal_id: {self.principal_id}")
+                except Exception as exc:
+                    if self.fail_closed:
+                        self.observability.record_error("trust_adjustment", "trust_oracle_failure")
+                        return self._make_decision(
+                            outcome=PolicyOutcome.BLOCK,
+                            reason=f"Trust oracle failure (fail-closed): {exc}",
+                            sink=sink,
+                            provenance_node_id=provenance_node_id,
+                            capability_granted=capability_granted,
+                            evaluation_trace=evaluation_trace + ["trust_oracle_failure → BLOCK"],
+                            target=target,
+                            policy_hash=policy_hash
+                        )
+                    trust_score = 0.0
+                    evaluation_trace.append(f"trust_oracle_error_ignored: {exc}")
 
-            # CRITICAL GUARDRAIL: Never soften UNTRUSTED + CRITICAL
-            if not (integrity == IntegrityLevel.UNTRUSTED and sink.risk == SinkRisk.CRITICAL):
-                # Rule 1: HIGH TRUST (≥0.7) + BLOCK + LOW/MEDIUM risk → soften to STEP_UP
-                if trust_score >= 0.7 and outcome == PolicyOutcome.BLOCK:
-                    if sink.risk in [SinkRisk.LOW, SinkRisk.MEDIUM]:
-                        evaluation_trace.append(f"trust_oracle: SOFTENED (BLOCK → STEP_UP, trust={trust_score:.2f})")
-                        outcome = PolicyOutcome.STEP_UP
-                        reason = f"Trust-adjusted from BLOCK (trust={trust_score:.2f}, {sink.risk.value} risk)"
+                # CRITICAL GUARDRAIL: Never soften UNTRUSTED + CRITICAL
+                if not (integrity == IntegrityLevel.UNTRUSTED and sink.risk == SinkRisk.CRITICAL):
+                    # Rule 1: HIGH TRUST (≥0.7) + BLOCK + LOW/MEDIUM risk → soften to STEP_UP
+                    if trust_score >= 0.7 and outcome == PolicyOutcome.BLOCK:
+                        if sink.risk in [SinkRisk.LOW, SinkRisk.MEDIUM]:
+                            evaluation_trace.append(f"trust_oracle: SOFTENED (BLOCK → STEP_UP, trust={trust_score:.2f})")
+                            outcome = PolicyOutcome.STEP_UP
+                            reason = f"Trust-adjusted from BLOCK (trust={trust_score:.2f}, {sink.risk.value} risk)"
+                            trust_adjusted = True
+                    # Rule 2: LOW TRUST (≤0.3) + STEP_UP → harden to BLOCK
+                    elif trust_score <= 0.3 and outcome == PolicyOutcome.STEP_UP:
+                        evaluation_trace.append(f"trust_oracle: HARDENED (STEP_UP → BLOCK, trust={trust_score:.2f})")
+                        outcome = PolicyOutcome.BLOCK
+                        reason = f"Trust-adjusted to BLOCK (trust={trust_score:.2f}, risky history)"
                         trust_adjusted = True
-                # Rule 2: LOW TRUST (≤0.3) + STEP_UP → harden to BLOCK
-                elif trust_score <= 0.3 and outcome == PolicyOutcome.STEP_UP:
-                    evaluation_trace.append(f"trust_oracle: HARDENED (STEP_UP → BLOCK, trust={trust_score:.2f})")
-                    outcome = PolicyOutcome.BLOCK
-                    reason = f"Trust-adjusted to BLOCK (trust={trust_score:.2f}, risky history)"
-                    trust_adjusted = True
+                    else:
+                        evaluation_trace.append("trust_oracle: NO_ADJUSTMENT")
                 else:
-                    evaluation_trace.append("trust_oracle: NO_ADJUSTMENT")
-            else:
-                evaluation_trace.append("trust_oracle: CRITICAL_GUARDRAIL_ACTIVE (no adjustment)")
+                    evaluation_trace.append("trust_oracle: CRITICAL_GUARDRAIL_ACTIVE (no adjustment)")
 
         evaluation_trace.append(f"final_decision: {outcome.value}")
 
@@ -1224,128 +1244,159 @@ class SinkPolicy:
     ) -> PolicyDecision:
         """Internal: Create PolicyDecision with QSEAL signature and record to ledger"""
         evaluation_trace = list(evaluation_trace)
-
-        # Composition hardening: cumulative risk pressure across a session/principal.
-        if self.composition_risk_engine:
-            snapshot = self.composition_risk_engine.preview(
-                principal_id=self.principal_id,
-                sink_risk=sink.risk.value,
-            )
-            evaluation_trace.append(
-                f"composition_risk: current={snapshot.current_score}, predicted={snapshot.predicted_score}, "
-                f"next_weight={snapshot.next_weight}, window_s={snapshot.window_seconds}"
-            )
-            if outcome != PolicyOutcome.BLOCK:
-                if snapshot.predicted_score >= snapshot.block_threshold:
-                    outcome = PolicyOutcome.BLOCK
-                    reason = (
-                        f"Cumulative composition risk budget exceeded "
-                        f"({snapshot.predicted_score} >= {snapshot.block_threshold})"
-                    )
-                    evaluation_trace.append("composition_threshold_block → BLOCK")
-                elif snapshot.predicted_score >= snapshot.step_up_threshold and outcome == PolicyOutcome.ALLOW:
-                    outcome = PolicyOutcome.STEP_UP
-                    reason = (
-                        f"Cumulative composition risk requires STEP_UP "
-                        f"({snapshot.predicted_score} >= {snapshot.step_up_threshold})"
-                    )
-                    evaluation_trace.append("composition_threshold_step_up → STEP_UP")
-
-        provenance_node = self.provenance_graph.nodes.get(
-            provenance_node_id,
-            ProvenanceNode(
-                node_id="unknown",
-                source="unknown",
-                integrity=IntegrityLevel.UNKNOWN,
-                confidentiality=ConfidentialityLevel.PUBLIC
-            )
+        decision_ctx = self.observability.trace_layer(
+            "decision_finalize",
+            attributes={
+                "mvar.sink.tool": sink.tool,
+                "mvar.sink.action": sink.action,
+                "mvar.outcome.initial": outcome.value,
+            },
         )
+        decision_span = decision_ctx.__enter__()
+        exit_exc: Optional[tuple[Any, Any, Any]] = None
+        try:
 
-        decision = PolicyDecision(
-            outcome=outcome,
-            reason=reason,
-            sink=sink,
-            provenance_node=provenance_node,
-            capability_granted=capability_granted,
-            integrity_check=provenance_node.integrity.value,
-            confidentiality_check=provenance_node.confidentiality.value,
-            evaluation_trace=evaluation_trace,
-            policy_hash=policy_hash,
-            target_hash=hashlib.sha256(target.encode("utf-8")).hexdigest() if target else "",
-        )
+            # Composition hardening: cumulative risk pressure across a session/principal.
+            if self.composition_risk_engine:
+                snapshot = self.composition_risk_engine.preview(
+                    principal_id=self.principal_id,
+                    sink_risk=sink.risk.value,
+                )
+                evaluation_trace.append(
+                    f"composition_risk: current={snapshot.current_score}, predicted={snapshot.predicted_score}, "
+                    f"next_weight={snapshot.next_weight}, window_s={snapshot.window_seconds}"
+                )
+                if outcome != PolicyOutcome.BLOCK:
+                    if snapshot.predicted_score >= snapshot.block_threshold:
+                        outcome = PolicyOutcome.BLOCK
+                        reason = (
+                            f"Cumulative composition risk budget exceeded "
+                            f"({snapshot.predicted_score} >= {snapshot.block_threshold})"
+                        )
+                        evaluation_trace.append("composition_threshold_block → BLOCK")
+                    elif snapshot.predicted_score >= snapshot.step_up_threshold and outcome == PolicyOutcome.ALLOW:
+                        outcome = PolicyOutcome.STEP_UP
+                        reason = (
+                            f"Cumulative composition risk requires STEP_UP "
+                            f"({snapshot.predicted_score} >= {snapshot.step_up_threshold})"
+                        )
+                        evaluation_trace.append("composition_threshold_step_up → STEP_UP")
 
-        if self.composition_risk_engine and decision.outcome in (PolicyOutcome.ALLOW, PolicyOutcome.STEP_UP):
-            target_hash = hashlib.sha256(target.encode("utf-8")).hexdigest()[:16] if target else "none"
-            self.composition_risk_engine.record(
-                principal_id=self.principal_id,
-                sink_risk=sink.risk.value,
-                outcome=decision.outcome.value,
-                tool=sink.tool,
-                action=sink.action,
-                target_hash=target_hash,
+            provenance_node = self.provenance_graph.nodes.get(
+                provenance_node_id,
+                ProvenanceNode(
+                    node_id="unknown",
+                    source="unknown",
+                    integrity=IntegrityLevel.UNKNOWN,
+                    confidentiality=ConfidentialityLevel.PUBLIC
+                )
             )
-            post = self.composition_risk_engine.preview(
-                principal_id=self.principal_id,
-                sink_risk="low",
-            )
-            decision.evaluation_trace.append(
-                f"composition_post_record: score={post.current_score}, events={post.event_count}"
-            )
 
-        # QSEAL signature
-        if self.enable_qseal:
-            try:
-                sealed = self.qseal_signer.seal_result(decision.to_dict())
-                if self.fail_closed and not sealed.verified:
-                    decision.outcome = PolicyOutcome.BLOCK
-                    decision.reason = "Fail-closed: QSEAL verification failed"
-                    decision.evaluation_trace.append("qseal_unverified → BLOCK")
-                decision.qseal_signature = sealed.to_dict()
-            except Exception as exc:
-                if self.fail_closed:
-                    decision.outcome = PolicyOutcome.BLOCK
-                    decision.reason = f"Fail-closed: QSEAL signing error ({exc})"
-                    decision.evaluation_trace.append("qseal_sign_error → BLOCK")
-
-        if decision.outcome in (PolicyOutcome.ALLOW, PolicyOutcome.STEP_UP):
-            execution_token = self._issue_execution_token(
+            decision = PolicyDecision(
+                outcome=outcome,
+                reason=reason,
                 sink=sink,
-                target=target,
-                provenance_node_id=provenance_node_id,
+                provenance_node=provenance_node,
+                capability_granted=capability_granted,
+                integrity_check=provenance_node.integrity.value,
+                confidentiality_check=provenance_node.confidentiality.value,
+                evaluation_trace=evaluation_trace,
                 policy_hash=policy_hash,
+                target_hash=hashlib.sha256(target.encode("utf-8")).hexdigest() if target else "",
             )
-            if self.require_execution_token and execution_token is None:
-                decision.outcome = PolicyOutcome.BLOCK
-                decision.reason = "Fail-closed: execution token secret missing"
-                decision.evaluation_trace.append("execution_token_missing → BLOCK")
-            else:
-                decision.execution_token = execution_token
 
-        # NEW: Record decision to ledger (BLOCK/STEP_UP only)
-        if self.decision_ledger and decision.outcome in [PolicyOutcome.BLOCK, PolicyOutcome.STEP_UP]:
-            try:
-                decision_id = self.decision_ledger.record_decision(
+            if self.composition_risk_engine and decision.outcome in (PolicyOutcome.ALLOW, PolicyOutcome.STEP_UP):
+                target_hash = hashlib.sha256(target.encode("utf-8")).hexdigest()[:16] if target else "none"
+                self.composition_risk_engine.record(
+                    principal_id=self.principal_id,
+                    sink_risk=sink.risk.value,
                     outcome=decision.outcome.value,
+                    tool=sink.tool,
+                    action=sink.action,
+                    target_hash=target_hash,
+                )
+                post = self.composition_risk_engine.preview(
+                    principal_id=self.principal_id,
+                    sink_risk="low",
+                )
+                decision.evaluation_trace.append(
+                    f"composition_post_record: score={post.current_score}, events={post.event_count}"
+                )
+
+            # QSEAL signature
+            if self.enable_qseal:
+                try:
+                    sealed = self.qseal_signer.seal_result(decision.to_dict())
+                    if self.fail_closed and not sealed.verified:
+                        decision.outcome = PolicyOutcome.BLOCK
+                        decision.reason = "Fail-closed: QSEAL verification failed"
+                        decision.evaluation_trace.append("qseal_unverified → BLOCK")
+                        self.observability.record_error("decision_finalize", "qseal_unverified")
+                    decision.qseal_signature = sealed.to_dict()
+                except Exception as exc:
+                    if self.fail_closed:
+                        decision.outcome = PolicyOutcome.BLOCK
+                        decision.reason = f"Fail-closed: QSEAL signing error ({exc})"
+                        decision.evaluation_trace.append("qseal_sign_error → BLOCK")
+                        self.observability.record_error("decision_finalize", "qseal_sign_error")
+
+            if decision.outcome in (PolicyOutcome.ALLOW, PolicyOutcome.STEP_UP):
+                execution_token = self._issue_execution_token(
                     sink=sink,
                     target=target,
                     provenance_node_id=provenance_node_id,
-                    principal_id=self.principal_id,
-                    evaluation_trace=evaluation_trace,
-                    reason=reason,
-                    user_override=False,
-                    policy_hash=policy_hash
+                    policy_hash=policy_hash,
                 )
-                # Attach decision ID to result (for CLI tools to reference)
-                decision.decision_id = decision_id
-            except Exception as e:
-                if self.fail_closed:
+                if self.require_execution_token and execution_token is None:
                     decision.outcome = PolicyOutcome.BLOCK
-                    decision.reason = f"Fail-closed: decision ledger write failure ({e})"
-                    decision.evaluation_trace.append("ledger_record_failed → BLOCK")
+                    decision.reason = "Fail-closed: execution token secret missing"
+                    decision.evaluation_trace.append("execution_token_missing → BLOCK")
+                    self.observability.record_error("decision_finalize", "execution_token_missing")
                 else:
-                    print(f"⚠️  Decision ledger recording failed: {e}")
+                    decision.execution_token = execution_token
 
-        return decision
+            # NEW: Record decision to ledger (BLOCK/STEP_UP only)
+            if self.decision_ledger and decision.outcome in [PolicyOutcome.BLOCK, PolicyOutcome.STEP_UP]:
+                try:
+                    decision_id = self.decision_ledger.record_decision(
+                        outcome=decision.outcome.value,
+                        sink=sink,
+                        target=target,
+                        provenance_node_id=provenance_node_id,
+                        principal_id=self.principal_id,
+                        evaluation_trace=evaluation_trace,
+                        reason=reason,
+                        user_override=False,
+                        policy_hash=policy_hash
+                    )
+                    # Attach decision ID to result (for CLI tools to reference)
+                    decision.decision_id = decision_id
+                except Exception as e:
+                    if self.fail_closed:
+                        decision.outcome = PolicyOutcome.BLOCK
+                        decision.reason = f"Fail-closed: decision ledger write failure ({e})"
+                        decision.evaluation_trace.append("ledger_record_failed → BLOCK")
+                        self.observability.record_error("decision_finalize", "ledger_record_failed")
+                    else:
+                        print(f"⚠️  Decision ledger recording failed: {e}")
+
+            trust_level = (
+                "high" if decision.integrity_check == IntegrityLevel.TRUSTED.value
+                else "low" if decision.integrity_check == IntegrityLevel.UNTRUSTED.value
+                else "medium"
+            )
+            self.observability.record_verification(trust_level=trust_level, outcome=decision.outcome.value)
+            decision_span.set_attribute("mvar.outcome.final", decision.outcome.value)
+            decision_span.set_attribute("mvar.integrity", decision.integrity_check)
+            return decision
+        except Exception as exc:
+            exit_exc = (type(exc), exc, exc.__traceback__)
+            raise
+        finally:
+            if exit_exc is None:
+                decision_ctx.__exit__(None, None, None)
+            else:
+                decision_ctx.__exit__(*exit_exc)
 
 
 # Common sink classifications
