@@ -30,8 +30,9 @@ jobs:
       - name: Install pinned dependencies
         run: |
           if [ "${{ matrix.python-version }}" = "3.10" ]; then
-            # requirements-ci.txt is compiled on py3.13 and misses some py3.10-only transitive markers.
-            python -m pip install -r requirements-ci.txt
+            # requirements-ci.txt is compiled on py3.13 and may miss py3.10-only marker deps.
+            # Try the lock first, then fall back to the source input for py3.10 matrix stability.
+            python -m pip install -r requirements-ci.txt || python -m pip install -r requirements-ci.in
           else
             python -m pip install --require-hashes -r requirements-ci.txt
           fi
