@@ -10,6 +10,53 @@ Deterministic enforcement that prevents prompt-injection attacks from reaching t
 
 ---
 
+<details>
+<summary><strong>What does MVAR block?</strong> 50 attack vectors · 9 categories · CI-gated on every commit</summary>
+
+MVAR's sink policy was evaluated against a 50-vector adversarial corpus spanning 9 attack categories:
+
+| Category | Vectors | Result |
+|----------|---------|--------|
+| Direct command injection | 6 | ✅ 6/6 blocked |
+| Environment variable attacks | 5 | ✅ 5/5 blocked |
+| Encoding/obfuscation (Base64, Unicode, hex) | 8 | ✅ 8/8 blocked |
+| Shell manipulation (pipes, eval, substitution) | 7 | ✅ 7/7 blocked |
+| Multi-stage attacks (download+execute) | 6 | ✅ 6/6 blocked |
+| Taint laundering (cache, logs, temp files) | 5 | ✅ 5/5 blocked |
+| Template escaping (JSON, XML, Markdown) | 5 | ✅ 5/5 blocked |
+| Credential theft (AWS, SSH keys) | 4 | ✅ 4/4 blocked |
+| Novel corpus variants | 4 | ✅ 4/4 blocked |
+
+**Result:** Blocked every vector in the current validation corpus under the tested policy and sink configuration.
+
+**Scope:** This demonstrates consistent enforcement for this validation corpus. Not a proof of completeness against all possible attacks.
+
+</details>
+
+## Verify in 60 Seconds
+
+Fast path (works even if you forgot to activate the right venv):
+
+```bash
+bash scripts/doctor-environment.sh
+bash scripts/quick-verify.sh
+```
+
+Manual path (from repo root):
+
+```bash
+python -m pytest -q
+./scripts/launch-gate.sh
+python scripts/generate_security_scorecard.py
+python scripts/update_status_md.py
+```
+
+What this proves:
+- Launch gate and full suite are green in CI.
+- Attack corpus blocks 50/50 under current policy.
+- Benign corpus has zero false blocks.
+- Exact current numbers are published in [STATUS.md](STATUS.md).
+
 ## Use MVAR in Your Agent (2 Ways)
 
 ### Mode A — Library integration
@@ -55,30 +102,6 @@ result = adapter.execute_tool_call(tool_call, tool_registry, source_text="model 
 ```
 
 For adapter quickstarts across LangChain, OpenAI, OpenAI Agents SDK, Google ADK, Claude, MCP, AutoGen, CrewAI, and OpenClaw, see [docs/FIRST_PARTY_ADAPTERS.md](docs/FIRST_PARTY_ADAPTERS.md).
-
-## Verify in 60 Seconds
-
-Fast path (works even if you forgot to activate the right venv):
-
-```bash
-bash scripts/doctor-environment.sh
-bash scripts/quick-verify.sh
-```
-
-Manual path (from repo root):
-
-```bash
-python -m pytest -q
-./scripts/launch-gate.sh
-python scripts/generate_security_scorecard.py
-python scripts/update_status_md.py
-```
-
-What this proves:
-- Launch gate and full suite are green in CI.
-- Attack corpus blocks 50/50 under current policy.
-- Benign corpus has zero false blocks.
-- Exact current numbers are published in [STATUS.md](STATUS.md).
 
 ## What's New in v1.2.x
 
