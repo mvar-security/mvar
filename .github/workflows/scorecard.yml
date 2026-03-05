@@ -32,7 +32,7 @@ jobs:
         with:
           results_file: results.sarif
           results_format: sarif
-          publish_results: true
+          publish_results: ${{ github.event_name != 'workflow_dispatch' }}
 
       - name: Upload SARIF
         if: always()
