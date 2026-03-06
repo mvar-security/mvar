@@ -1,3 +1,5 @@
+![MVAR Banner](./assets/mvar-banner.png)
+
 # MVAR — MIRRA Verified Agent Runtime
 
 Deterministic enforcement that prevents prompt-injection attacks from reaching tool execution in LLM agents.
