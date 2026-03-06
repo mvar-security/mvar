@@ -39,6 +39,8 @@ MVAR sits between model reasoning and privileged tool execution, enforcing deter
 
 Run the same agent behavior with and without execution-boundary enforcement.
 
+![MVAR Attack Demo](./assets/demo.gif)
+
 ```bash
 python examples/agent_testbed.py --scenario rag_injection
 ```
