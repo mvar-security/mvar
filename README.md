@@ -12,28 +12,38 @@ Deterministic enforcement that prevents prompt-injection attacks from reaching t
 
 ---
 
-<details>
-<summary><strong>What does MVAR block?</strong> 50 attack vectors · 9 categories · CI-gated on every commit</summary>
+## Why MVAR Exists
 
-MVAR's sink policy was evaluated against a 50-vector adversarial corpus spanning 9 attack categories:
+Most agent security today relies on prompt filtering, model guardrails, or heuristic detection. These approaches try to prevent malicious inputs from reaching the model or influencing its reasoning. The real failure, however, happens later: when untrusted input influences tool execution—shell commands, API calls, file operations.
 
-| Category | Vectors | Result |
-|----------|---------|--------|
-| Direct command injection | 6 | ✅ 6/6 blocked |
-| Environment variable attacks | 5 | ✅ 5/5 blocked |
-| Encoding/obfuscation (Base64, Unicode, hex) | 8 | ✅ 8/8 blocked |
-| Shell manipulation (pipes, eval, substitution) | 7 | ✅ 7/7 blocked |
-| Multi-stage attacks (download+execute) | 6 | ✅ 6/6 blocked |
-| Taint laundering (cache, logs, temp files) | 5 | ✅ 5/5 blocked |
-| Template escaping (JSON, XML, Markdown) | 5 | ✅ 5/5 blocked |
-| Credential theft (AWS, SSH keys) | 4 | ✅ 4/4 blocked |
-| Novel corpus variants | 4 | ✅ 4/4 blocked |
+MVAR enforces deterministic policy at the execution boundary. It does not try to guess intent or classify prompts. Instead, it tracks provenance (where data came from), evaluates capabilities (what tools are allowed), and enforces sink policies (which operations can run) before any privileged action executes.
 
-**Result:** Blocked every vector in the current validation corpus under the tested policy and sink configuration.
+This is not a new idea—it builds on 40 years of information flow control research (FIDES, Jif, FlowCaml). MVAR applies that foundation to LLM agent runtimes, where ambient authority and untrusted inputs create a new attack surface.
 
-**Scope:** This demonstrates consistent enforcement for this validation corpus. Not a proof of completeness against all possible attacks.
+## Where MVAR Sits
 
-</details>
+```mermaid
+flowchart LR
+    A[User / Docs / Web / Tool Output] --> B[LLM Agent]
+    B --> C[MVAR Runtime Boundary]
+    C --> C1[Provenance / IFC]
+    C --> C2[Capability Enforcement]
+    C --> C3[Deterministic Sink Policy]
+    C --> C4[Execution Witness / Audit]
+    C --> D[Shell / Filesystem / APIs / Tools]
+```
+
+MVAR sits between model reasoning and privileged tool execution, enforcing deterministic policy before actions run.
+
+## Without MVAR vs With MVAR
+
+| Without MVAR | With MVAR |
+|--------------|-----------|
+| Untrusted input reaches the model | Untrusted input may still reach the model |
+| Model proposes a tool call | Model may still propose a tool call |
+| Wrapper may execute it directly | MVAR evaluates provenance, capability, and sink risk |
+| No structural prevention of untrusted execution | Unsafe execution is blocked before the tool runs |
+| Post-hoc logging only | Deterministic decision + cryptographic audit trail |
 
 ## Verify in 60 Seconds
 
@@ -54,10 +64,10 @@ python scripts/update_status_md.py
 ```
 
 What this proves:
-- Launch gate and full suite are green in CI.
-- Attack corpus blocks 50/50 under current policy.
-- Benign corpus has zero false blocks.
-- Exact current numbers are published in [STATUS.md](STATUS.md).
+- Launch gate and full suite are green in CI
+- Attack corpus blocks 50/50 under current policy
+- Benign corpus has zero false blocks
+- Exact current numbers are published in [STATUS.md](STATUS.md)
 
 ## Use MVAR in Your Agent (2 Ways)
 
@@ -105,13 +115,68 @@ result = adapter.execute_tool_call(tool_call, tool_registry, source_text="model 
 
 For adapter quickstarts across LangChain, OpenAI, OpenAI Agents SDK, Google ADK, Claude, MCP, AutoGen, CrewAI, and OpenClaw, see [docs/FIRST_PARTY_ADAPTERS.md](docs/FIRST_PARTY_ADAPTERS.md).
 
+## What MVAR Is Not
+
+MVAR is **not**:
+
+- **Not a prompt filter** — MVAR does not attempt to detect or block malicious prompts
+- **Not an LLM judge** — MVAR does not use a secondary model to classify intent
+- **Not a replacement for OS sandboxing** — MVAR complements Docker/seccomp, does not replace them
+- **Not a replacement for network security** — Firewalls, host hardening, and network isolation remain necessary
+- **Not a malicious-intent detector** — MVAR enforces structural constraints, not behavioral anomaly detection
+
+MVAR is a **deterministic reference monitor** at privileged execution sinks. It assumes untrusted inputs exist and prevents them from reaching critical operations, regardless of detection accuracy.
+
+## What MVAR Blocks
+
+MVAR has validated enforcement against these attack classes:
+
+- **Prompt-injection-driven tool execution** ([tests/test_launch_redteam_gate.py](tests/test_launch_redteam_gate.py))
+- **Credential exfiltration attempts** ([demo/extreme_attack_suite_50.py](demo/extreme_attack_suite_50.py), vectors 22-25)
+- **Encoded/obfuscated malicious payloads** ([demo/extreme_attack_suite_50.py](demo/extreme_attack_suite_50.py), category 3)
+- **Multi-step composition attacks** ([tests/test_composition_risk.py](tests/test_composition_risk.py))
+- **Taint laundering via cache/logs/temp files** ([demo/extreme_attack_suite_50.py](demo/extreme_attack_suite_50.py), category 6)
+
+See [STATUS.md](STATUS.md) for exact current validation numbers.
+
+<details>
+<summary><strong>What does MVAR block?</strong> 50 attack vectors · 9 categories · CI-gated on every commit</summary>
+
+MVAR's sink policy was evaluated against a 50-vector adversarial corpus spanning 9 attack categories:
+
+| Category | Vectors | Result |
+|----------|---------|--------|
+| Direct command injection | 6 | ✅ 6/6 blocked |
+| Environment variable attacks | 5 | ✅ 5/5 blocked |
+| Encoding/obfuscation (Base64, Unicode, hex) | 8 | ✅ 8/8 blocked |
+| Shell manipulation (pipes, eval, substitution) | 7 | ✅ 7/7 blocked |
+| Multi-stage attacks (download+execute) | 6 | ✅ 6/6 blocked |
+| Taint laundering (cache, logs, temp files) | 5 | ✅ 5/5 blocked |
+| Template escaping (JSON, XML, Markdown) | 5 | ✅ 5/5 blocked |
+| Credential theft (AWS, SSH keys) | 4 | ✅ 4/4 blocked |
+| Novel corpus variants | 4 | ✅ 4/4 blocked |
+
+**Result:** Blocked every vector in the current validation corpus under the tested policy and sink configuration.
+
+**Scope:** This demonstrates consistent enforcement for this validation corpus. Not a proof of completeness against all possible attacks.
+
+</details>
+
+## Why This Is Different
+
+- **Not a prompt filter** — Enforces at execution time, not prompt time
+- **Not a heuristic classifier** — Deterministic policy, not probabilistic detection
+- **Deterministic sink enforcement** — `UNTRUSTED + CRITICAL = BLOCK` is a structural invariant
+- **Provenance-aware authorization** — Tracks data origin through the computation graph
+- **Auditable decisions with signed traces** — QSEAL Ed25519 signatures on policy decisions (optional)
+
+MVAR applies formal information flow control (IFC) techniques to LLM agent runtimes and combines them with cryptographic auditability.
+
 ## What's New in v1.2.x
 
 - **Secure by default:** runtime profile bootstrap (`STRICT`, `BALANCED`, `MONITOR`) removes opt-in hardening drift.
-- **Operationally credible:** deterministic guardrails now address public-bind incident class risk (`0.0.0.0`/`::`) with fail-closed checks.
-- **Publicly verifiable:** one command path regenerates proofs (`launch-gate`, scorecard, status artifact).
+- **Publicly verifiable launch gate:** one command path regenerates proofs (`launch-gate`, scorecard, status artifact).
 - **Prometheus-ready metrics:** optional `/metrics` endpoint for verification counters, durations, and error signals.
-- **OpenTelemetry-ready traces:** optional span instrumentation for verification pipeline stages.
 
 ## Trust & Verification
 
@@ -123,8 +188,6 @@ For adapter quickstarts across LangChain, OpenAI, OpenAI Agents SDK, Google ADK,
 - Troubleshooting matrix: [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)
 - Observability guide: [docs/OBSERVABILITY.md](docs/OBSERVABILITY.md)
 - Scorecard workflow: [.github/workflows/security-scorecard.yml](.github/workflows/security-scorecard.yml)
-
----
 
 ## 3-Minute Quickstart
 

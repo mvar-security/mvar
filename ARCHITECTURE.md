@@ -8,64 +8,34 @@ MVAR is an in-process enforcement layer for agent runtimes. It does not replace 
 
 ```mermaid
 flowchart LR
-    U[User / External Inputs] --> A[Agent Runtime]
-    A --> P[Provenance Graph<br/>mvar-core/provenance.py]
-    A --> C[Capability Runtime<br/>mvar-core/capability.py]
-    A --> S[Sink Policy Engine<br/>mvar-core/sink_policy.py]
-    P --> S
-    C --> S
-    S --> D{Outcome}
-    D -->|ALLOW| X[Execute Sink]
-    D -->|BLOCK| B[Reject Action]
-    D -->|STEP_UP| H[Step-Up / Confirmation Path]
-    S --> L[Decision Trace + Optional QSEAL]
+    A[User / Docs / Web / Tool Output] --> B[LLM Agent]
+    B --> C[MVAR Runtime Boundary]
+    C --> C1[Provenance / IFC]
+    C --> C2[Capability Enforcement]
+    C --> C3[Deterministic Sink Policy]
+    C --> C4[Execution Witness / Audit]
+    C --> D[Shell / Filesystem / APIs / Tools]
 ```
 
-## Enforcement Pipeline
+## Layer 1: Provenance / IFC
 
-Privileged actions are mediated at execution sinks through a deterministic decision path:
+The provenance layer (`mvar-core/provenance.py`) implements dual-lattice taint tracking across integrity (`TRUSTED`/`UNTRUSTED`) and confidentiality (`PUBLIC`/`SENSITIVE`/`SECRET`) domains with conservative propagation. This means untrusted lineage persists through derived outputs, providing deterministic context at the point of authorization rather than relying on prompt-time heuristics.
 
-```mermaid
-sequenceDiagram
-    participant App as Agent/App
-    participant Prov as Provenance
-    participant Cap as Capability Runtime
-    participant Pol as Sink Policy
-    participant Sink as Privileged Sink
+## Layer 2: Capability Runtime
 
-    App->>Prov: Create / propagate provenance labels
-    App->>Pol: evaluate(tool, action, provenance_node_id, target)
-    Pol->>Cap: Verify declared permission and target
-    Pol->>Prov: Resolve integrity/confidentiality lineage
-    Pol-->>App: Decision (ALLOW | BLOCK | STEP_UP) + trace
-    alt ALLOW
-      App->>Sink: Execute
-    else BLOCK
-      App-->>App: Abort execution
-    else STEP_UP
-      App-->>App: Require confirmation / policy step-up
-    end
-```
+The capability layer (`mvar-core/capability.py`) enforces a deny-by-default execution model where tools must declare explicit permissions and allowed targets before use. Per-target checks and command allowlisting prevent ambient-authority execution paths and constrain tool actions to predeclared boundaries.
 
-## Core Components
+## Layer 3: Deterministic Sink Policy
 
-1. Provenance taint system: dual-lattice integrity/confidentiality labels with conservative propagation.
-2. Capability runtime: deny-by-default permission model with per-target checks.
-3. Sink policy engine: deterministic ALLOW/BLOCK/STEP_UP outcomes with traceable reasoning.
-4. Adapter layer: framework-specific wrappers that route tool execution through sink-policy evaluation.
+The sink policy layer (`mvar-core/sink_policy.py`) evaluates each privileged action and returns one of three outcomes: `ALLOW`, `BLOCK`, or `STEP_UP`. It enforces structural invariants (for example `UNTRUSTED + CRITICAL -> BLOCK`) and records decision traces so authorization behavior is reproducible and testable across adapters.
+
+## Layer 4: Execution Witness / Audit
+
+The execution witness path binds policy decisions to execution context and emits tamper-evident decision artifacts. Optional QSEAL signing (Ed25519) provides cryptographic integrity for recorded outcomes and supports auditable post-hoc verification without changing the deterministic enforcement model.
 
 ## Adapter Surfaces
 
 First-party adapters exist for LangChain, OpenAI, MCP, Claude, AutoGen, CrewAI, and OpenClaw.
-
-```mermaid
-flowchart LR
-    F[Framework Adapter<br/>mvar_adapters/] --> E[Shared Enforcement Path]
-    E --> P[Provenance]
-    E --> C[Capability]
-    E --> S[Sink Policy]
-    S --> O[Deterministic Outcome]
-```
 
 ## Deterministic Invariant
 
