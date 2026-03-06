@@ -1,3 +1,5 @@
+![MVAR Banner](./assets/mvar-banner.png)
+
 # MVAR — MIRRA Verified Agent Runtime
 
 Deterministic enforcement that prevents prompt-injection attacks from reaching tool execution in LLM agents.
@@ -115,6 +117,7 @@ For adapter quickstarts across LangChain, OpenAI, OpenAI Agents SDK, Google ADK,
 
 - Runtime trust map: [TRUST.md](TRUST.md)
 - Current security snapshot: [STATUS.md](STATUS.md)
+- Integration intake template: [.github/ISSUE_TEMPLATE/integration_request.md](.github/ISSUE_TEMPLATE/integration_request.md)
 - Profile behavior: [docs/SECURITY_PROFILES.md](docs/SECURITY_PROFILES.md)
 - Public-bind incident class and mitigation: [docs/INCIDENT_CLASS_PUBLIC_BIND_MAR2_2026.md](docs/INCIDENT_CLASS_PUBLIC_BIND_MAR2_2026.md)
 - Troubleshooting matrix: [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)
@@ -182,6 +185,7 @@ python examples/otel_demo.py
 ## Research
 
 - [Execution-Witness Binding: Proof-Carrying Authorization for LLM Agent Runtimes](docs/papers/execution-witness-binding.pdf) (February 2026) — Technical paper describing MVAR's novel contributions: composition risk detection, execution-witness binding for TOCTOU prevention, and persistent replay defense.
+- SSRN preprint listing: https://papers.ssrn.com/sol3/papers.cfm?abstract_id=6352164
 
 ---
 

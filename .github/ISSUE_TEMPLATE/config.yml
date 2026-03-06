@@ -6,3 +6,6 @@ contact_links:
   - name: Contribution guide
     url: https://github.com/mvar-security/mvar/blob/main/docs/BUILD_WITH_US.md
     about: Read contribution expectations and security invariants before opening issues/PRs.
+  - name: Integration playbook
+    url: https://github.com/mvar-security/mvar/blob/main/docs/AGENT_INTEGRATION_PLAYBOOK.md
+    about: Review adapter contract requirements before requesting new framework integrations.
