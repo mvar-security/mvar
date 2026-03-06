@@ -8,6 +8,8 @@ Set FontFamily "JetBrains Mono"
 Set Width 800
 Set Height 550
 Set Theme "Dracula"
+Set WindowBar Colorful
+Set BorderRadius 8
 Set Padding 20
 Set Framerate 24
 Set PlaybackSpeed 1.0
