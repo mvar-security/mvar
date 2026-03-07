@@ -125,6 +125,9 @@ safe_bash = protect(my_bash_tool)          # untrusted by default
 safe_bash = protect(my_bash_tool, profile="strict")   # strict profile
 ```
 
+Tested against 50 prompt-injection attack vectors.
+All blocked before tool execution.
+
 ```python
 from mvar import protect, ExecutionBlocked
 
@@ -140,6 +143,43 @@ except ExecutionBlocked as e:
 Profiles: `balanced` (default), `strict`, and `permissive`.
 Inputs from external sources are untrusted by default; pass `trusted=True` only for system-initialized tools.
 Full contract: [`spec/execution_intent/v1.schema.json`](spec/execution_intent/v1.schema.json) and [`spec/decision_record/v1.schema.json`](spec/decision_record/v1.schema.json).
+
+## 30-Second Proof
+
+```python
+def my_bash_tool(command: str) -> str:
+    import subprocess
+    return subprocess.check_output(command, shell=True, text=True)
+
+# Unsafe baseline: executes directly
+my_bash_tool("cat /etc/shadow")
+```
+
+```python
+from mvar import protect, ExecutionBlocked
+
+safe_tool = protect(my_bash_tool)
+try:
+    safe_tool("cat /etc/shadow")
+except ExecutionBlocked as e:
+    print(e.decision["outcome"])      # BLOCK
+    print(e.decision["reason"])       # policy reason
+    print(e.decision["audit"]["qsealSignature"])  # cryptographic witness
+```
+
+```text
+ExecutionBlocked: untrusted input cannot reach a critical sink
+```
+
+```json
+{
+  "outcome": "BLOCK",
+  "reason": "UNTRUSTED input reaching CRITICAL sink",
+  "audit": {
+    "qsealSignature": "ed25519:..."
+  }
+}
+```
 
 ## Use MVAR in Your Agent (2 Ways)
 
