@@ -18,9 +18,9 @@ What is currently reproducible:
 
 Quick repro:
 ```bash
-python examples/agent_testbed.py --scenario rag_injection
-python examples/agent_testbed.py --scenario taint_laundering
-python examples/agent_testbed.py --scenario benign
+bash scripts/run-agent-testbed.sh --scenario rag_injection
+bash scripts/run-agent-testbed.sh --scenario taint_laundering
+bash scripts/run-agent-testbed.sh --scenario benign
 python3 ./scripts/check_agent_testbed_trilogy.py
 pytest -q tests/test_openai_deep_integration.py
 ```
