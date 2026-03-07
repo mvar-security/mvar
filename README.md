@@ -1,7 +1,7 @@
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="./assets/mvar-banner.png"">
-  <source media="(prefers-color-scheme: light)" srcset="./assets/mvar-banner-dark-mode.png>
-  <img alt="MVAR Banner" src="./assets/mvar-banner.png">
+  <source media="(prefers-color-scheme: dark)" srcset="./assets/banner_dark_mode.png">
+  <source media="(prefers-color-scheme: light)" srcset="./assets/mvar-banner-light.png">
+  <img alt="MVAR Banner" src="./assets/mvar-banner-light.png">
 </picture>
 
 # MVAR — MIRRA Verified Agent Runtime
