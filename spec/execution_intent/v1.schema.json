@@ -1,0 +1,173 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mvar.io/schemas/execution_intent/v1",
+  "title": "ExecutionIntent",
+  "description": "Request for agent runtime to execute a tool/operation. Input to MVAR policy evaluation.",
+  "type": "object",
+  "required": ["apiVersion", "kind", "actor", "action", "target", "provenance", "risk"],
+  "additionalProperties": false,
+  "properties": {
+    "apiVersion": {
+      "type": "string",
+      "const": "mvar.io/v1",
+      "description": "API version. Must be 'mvar.io/v1' for this schema."
+    },
+    "kind": {
+      "type": "string",
+      "const": "ExecutionIntent",
+      "description": "Resource type. Must be 'ExecutionIntent'."
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Optional metadata for tracking and audit.",
+      "properties": {
+        "intentId": {
+          "type": "string",
+          "description": "Unique identifier for this execution intent."
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 timestamp when intent was created."
+        },
+        "sessionId": {
+          "type": "string",
+          "description": "Agent session or conversation ID."
+        },
+        "labels": {
+          "type": "object",
+          "additionalProperties": {"type": "string"},
+          "description": "Key-value labels for categorization."
+        }
+      }
+    },
+    "actor": {
+      "type": "object",
+      "required": ["type", "id"],
+      "description": "Who or what is requesting this execution.",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["agent", "user", "system"]
+        },
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the actor."
+        },
+        "framework": {
+          "type": "string",
+          "description": "Agent framework if applicable (e.g., 'langchain', 'openai', 'autogen')."
+        }
+      }
+    },
+    "action": {
+      "type": "object",
+      "required": ["tool", "operation"],
+      "description": "What operation is being requested.",
+      "properties": {
+        "tool": {
+          "type": "string",
+          "description": "Tool name (e.g., 'bash', 'filesystem', 'api_client')."
+        },
+        "operation": {
+          "type": "string",
+          "description": "Specific operation (e.g., 'execute', 'read', 'write', 'delete')."
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Operation parameters as key-value pairs."
+        },
+        "reasoning": {
+          "type": "string",
+          "description": "Agent reasoning or justification for this action (optional, for audit)."
+        }
+      }
+    },
+    "target": {
+      "type": "object",
+      "required": ["type"],
+      "description": "What is being acted upon.",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["shell", "filesystem", "network", "api", "database", "memory", "other"]
+        },
+        "resource": {
+          "type": "string",
+          "description": "Specific resource identifier (e.g., file path, URL, table name)."
+        },
+        "scope": {
+          "type": "string",
+          "enum": ["read", "write", "execute", "delete", "admin"]
+        }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "required": ["integrity"],
+      "description": "Provenance tracking: where did the inputs come from?",
+      "properties": {
+        "integrity": {
+          "type": "string",
+          "enum": ["TRUSTED", "UNTRUSTED", "TAINTED"],
+          "description": "Integrity level: TRUSTED (system/verified), UNTRUSTED (external input), TAINTED (derived from untrusted)."
+        },
+        "confidentiality": {
+          "type": "string",
+          "enum": ["PUBLIC", "INTERNAL", "SENSITIVE", "RESTRICTED"]
+        },
+        "sources": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "List of data sources that contributed to this intent."
+        },
+        "flowPath": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "step": {"type": "integer"},
+              "operation": {"type": "string"},
+              "taintPropagation": {"type": "boolean"}
+            }
+          },
+          "description": "Data flow path showing how taint propagated through the computation graph."
+        }
+      }
+    },
+    "risk": {
+      "type": "object",
+      "required": ["sinkLevel"],
+      "description": "Risk classification for this operation.",
+      "properties": {
+        "sinkLevel": {
+          "type": "string",
+          "enum": ["LOW", "MEDIUM", "HIGH", "CRITICAL"],
+          "description": "Sink risk level: LOW (logging), MEDIUM (file read), HIGH (file write), CRITICAL (shell exec)."
+        },
+        "justification": {
+          "type": "string",
+          "description": "Why this sink level was assigned."
+        },
+        "mitigations": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Applied mitigations (e.g., 'sandboxed', 'read-only')."
+        }
+      }
+    },
+    "context": {
+      "type": "object",
+      "description": "Additional context for policy evaluation (optional).",
+      "properties": {
+        "userApproved": {"type": "boolean"},
+        "emergencyOverride": {"type": "boolean"},
+        "policyHints": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    }
+  }
+}

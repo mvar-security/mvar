@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mvar.io/schemas/decision_record/v1",
+  "title": "DecisionRecord",
+  "description": "MVAR policy decision for an ExecutionIntent. Output of policy evaluation.",
+  "type": "object",
+  "required": ["apiVersion", "kind", "outcome", "reason", "integrity", "sinkLevel", "timestamp"],
+  "additionalProperties": false,
+  "properties": {
+    "apiVersion": {
+      "type": "string",
+      "const": "mvar.io/v1"
+    },
+    "kind": {
+      "type": "string",
+      "const": "DecisionRecord"
+    },
+    "metadata": {
+      "type": "object",
+      "properties": {
+        "decisionId": {"type": "string"},
+        "intentId": {"type": "string"},
+        "sessionId": {"type": "string"}
+      }
+    },
+    "outcome": {
+      "type": "string",
+      "enum": ["ALLOW", "BLOCK", "STEP_UP"],
+      "description": "Policy decision: ALLOW (execute), BLOCK (deny), STEP_UP (requires user confirmation)."
+    },
+    "reason": {
+      "type": "string",
+      "description": "Human-readable explanation of the decision."
+    },
+    "integrity": {
+      "type": "string",
+      "enum": ["TRUSTED", "UNTRUSTED", "TAINTED"]
+    },
+    "sinkLevel": {
+      "type": "string",
+      "enum": ["LOW", "MEDIUM", "HIGH", "CRITICAL"]
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "policy": {
+      "type": "object",
+      "properties": {
+        "profile": {
+          "type": "string",
+          "enum": ["strict", "balanced", "permissive", "custom"]
+        },
+        "rulesEvaluated": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "matchedRule": {"type": "string"}
+      }
+    },
+    "audit": {
+      "type": "object",
+      "properties": {
+        "logged": {"type": "boolean"},
+        "logDestination": {"type": "string"},
+        "qsealSignature": {"type": "string"},
+        "complianceFlags": {
+          "type": "array",
+          "items": {"type": "string"}
+        }
+      }
+    },
+    "mitigationAdvice": {
+      "type": "object",
+      "properties": {
+        "alternatives": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "requiredMitigations": {
+          "type": "array",
+          "items": {"type": "string"}
+        }
+      }
+    },
+    "performance": {
+      "type": "object",
+      "properties": {
+        "evaluationTimeMs": {"type": "number"},
+        "cacheHit": {"type": "boolean"}
+      }
+    }
+  }
+}

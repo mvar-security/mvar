@@ -1,0 +1,27 @@
+{
+  "apiVersion": "mvar.io/v1",
+  "kind": "DecisionRecord",
+  "metadata": {
+    "decisionId": "decision-def456",
+    "intentId": "intent-def456",
+    "sessionId": "session-xyz789"
+  },
+  "outcome": "ALLOW",
+  "reason": "Safe operation: TRUSTED source reading from LOW-risk sink (log file read).",
+  "integrity": "TRUSTED",
+  "sinkLevel": "LOW",
+  "timestamp": "2026-03-06T10:31:00.045Z",
+  "policy": {
+    "profile": "balanced",
+    "rulesEvaluated": ["rule-003-trusted-low", "rule-004-filesystem-read"],
+    "matchedRule": "rule-003-trusted-low"
+  },
+  "audit": {
+    "logged": true,
+    "logDestination": "/var/log/mvar/audit.jsonl"
+  },
+  "performance": {
+    "evaluationTimeMs": 0.8,
+    "cacheHit": true
+  }
+}
