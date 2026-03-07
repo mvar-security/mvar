@@ -10,6 +10,8 @@ Deterministic enforcement that prevents prompt-injection attacks from reaching t
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/mvar-security/mvar/badge)](https://scorecard.dev/viewer/?uri=github.com/mvar-security/mvar)
 [![Validation](https://img.shields.io/badge/Attack%20Vectors-50%20tested-brightgreen)](./)
 
+![MVAR One-Line Integration](./assets/mvar-one-line-integration.png)
+
 ---
 
 ## Why MVAR Exists
