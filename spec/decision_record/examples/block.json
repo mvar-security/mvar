@@ -1,0 +1,39 @@
+{
+  "apiVersion": "mvar.io/v1",
+  "kind": "DecisionRecord",
+  "metadata": {
+    "decisionId": "decision-abc123",
+    "intentId": "intent-abc123",
+    "sessionId": "session-xyz789"
+  },
+  "outcome": "BLOCK",
+  "reason": "Policy violation: UNTRUSTED input to CRITICAL sink (shell execution). Integrity invariant violated.",
+  "integrity": "UNTRUSTED",
+  "sinkLevel": "CRITICAL",
+  "timestamp": "2026-03-06T10:30:00.123Z",
+  "policy": {
+    "profile": "balanced",
+    "rulesEvaluated": ["rule-001-untrusted-critical", "rule-002-shell-exec"],
+    "matchedRule": "rule-001-untrusted-critical"
+  },
+  "audit": {
+    "logged": true,
+    "logDestination": "/var/log/mvar/audit.jsonl",
+    "qsealSignature": "ed25519:a3f8b9c2d1e4...",
+    "complianceFlags": ["SOC2"]
+  },
+  "mitigationAdvice": {
+    "alternatives": [
+      "Use a pre-approved diagnostic script from a trusted source",
+      "Execute in sandboxed environment with read-only filesystem"
+    ],
+    "requiredMitigations": [
+      "Obtain explicit user confirmation with full command disclosure",
+      "Run through MVAR sandbox with network isolation"
+    ]
+  },
+  "performance": {
+    "evaluationTimeMs": 2.3,
+    "cacheHit": false
+  }
+}

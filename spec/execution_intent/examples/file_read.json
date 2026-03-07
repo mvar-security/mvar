@@ -1,0 +1,35 @@
+{
+  "apiVersion": "mvar.io/v1",
+  "kind": "ExecutionIntent",
+  "metadata": {
+    "intentId": "intent-def456",
+    "timestamp": "2026-03-06T10:31:00Z",
+    "sessionId": "session-xyz789"
+  },
+  "actor": {
+    "type": "agent",
+    "id": "openai-agent-17",
+    "framework": "openai"
+  },
+  "action": {
+    "tool": "filesystem",
+    "operation": "read",
+    "parameters": {
+      "path": "/var/log/app.log",
+      "encoding": "utf-8"
+    }
+  },
+  "target": {
+    "type": "filesystem",
+    "resource": "/var/log/app.log",
+    "scope": "read"
+  },
+  "provenance": {
+    "integrity": "TRUSTED",
+    "sources": ["system_initialization"]
+  },
+  "risk": {
+    "sinkLevel": "LOW",
+    "justification": "Read-only access to log file, no side effects."
+  }
+}

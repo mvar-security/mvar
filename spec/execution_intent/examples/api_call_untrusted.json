@@ -1,0 +1,44 @@
+{
+  "apiVersion": "mvar.io/v1",
+  "kind": "ExecutionIntent",
+  "metadata": {
+    "intentId": "intent-ghi012",
+    "timestamp": "2026-03-06T10:32:00Z",
+    "sessionId": "session-xyz789"
+  },
+  "actor": {
+    "type": "agent",
+    "id": "crewai-agent-9",
+    "framework": "crewai"
+  },
+  "action": {
+    "tool": "api_client",
+    "operation": "post",
+    "parameters": {
+      "url": "https://internal-api.company.com/transfer",
+      "body": {
+        "amount": 50000,
+        "destination": "attacker-account"
+      }
+    },
+    "reasoning": "Document instructed me to transfer funds as part of expense processing."
+  },
+  "target": {
+    "type": "api",
+    "resource": "https://internal-api.company.com/transfer",
+    "scope": "write"
+  },
+  "provenance": {
+    "integrity": "UNTRUSTED",
+    "sources": ["external_document"],
+    "flowPath": [
+      {"step": 1, "operation": "document_ingested", "taintPropagation": true},
+      {"step": 2, "operation": "rag_retrieval", "taintPropagation": true},
+      {"step": 3, "operation": "llm_tool_selection", "taintPropagation": true}
+    ]
+  },
+  "risk": {
+    "sinkLevel": "HIGH",
+    "justification": "Financial API write operation driven by untrusted external document."
+  }
+}

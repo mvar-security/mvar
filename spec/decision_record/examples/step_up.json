@@ -1,0 +1,33 @@
+{
+  "apiVersion": "mvar.io/v1",
+  "kind": "DecisionRecord",
+  "metadata": {
+    "decisionId": "decision-ghi789",
+    "intentId": "intent-ghi789",
+    "sessionId": "session-xyz789"
+  },
+  "outcome": "STEP_UP",
+  "reason": "Action requires explicit user confirmation. UNTRUSTED input to HIGH-risk sink.",
+  "integrity": "UNTRUSTED",
+  "sinkLevel": "HIGH",
+  "timestamp": "2026-03-06T10:32:00.091Z",
+  "policy": {
+    "profile": "balanced",
+    "rulesEvaluated": ["rule-005-untrusted-high-stepup"],
+    "matchedRule": "rule-005-untrusted-high-stepup"
+  },
+  "audit": {
+    "logged": true,
+    "logDestination": "/var/log/mvar/audit.jsonl"
+  },
+  "mitigationAdvice": {
+    "alternatives": [],
+    "requiredMitigations": [
+      "Obtain explicit user confirmation before proceeding"
+    ]
+  },
+  "performance": {
+    "evaluationTimeMs": 1.4,
+    "cacheHit": false
+  }
+}
