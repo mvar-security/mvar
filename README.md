@@ -115,6 +115,30 @@ What this proves:
 - Benign corpus has zero false blocks
 - Exact current numbers are published in [STATUS.md](STATUS.md)
 
+## One-Line Protection
+
+```python
+from mvar import protect
+safe_bash = protect(my_bash_tool)          # untrusted by default
+safe_bash = protect(my_bash_tool, profile="strict")   # strict profile
+```
+
+```python
+from mvar import protect, ExecutionBlocked
+
+safe_tool = protect(my_bash_tool)
+try:
+    safe_tool("cat /etc/shadow")
+except ExecutionBlocked as e:
+    print(e.decision["outcome"])   # BLOCK
+    print(e.decision["reason"])    # policy reason
+    print(e.decision["audit"]["qsealSignature"])  # cryptographic witness
+```
+
+Profiles: `balanced` (default), `strict`, and `permissive`.
+Inputs from external sources are untrusted by default; pass `trusted=True` only for system-initialized tools.
+Full contract: [`spec/execution_intent/v1.schema.json`](spec/execution_intent/v1.schema.json) and [`spec/decision_record/v1.schema.json`](spec/decision_record/v1.schema.json).
+
 ## Use MVAR in Your Agent (2 Ways)
 
 ### Mode A — Library integration
