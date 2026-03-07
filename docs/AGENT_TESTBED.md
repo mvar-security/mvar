@@ -13,7 +13,11 @@ The shell tool is simulated only (no host side effects; safe demo).
 ## Run
 
 ```bash
-python examples/agent_testbed.py --scenario rag_injection
+bash scripts/run-agent-testbed.sh --scenario rag_injection
+```
+
+```powershell
+pwsh -File .\scripts\run-agent-testbed.ps1 --scenario rag_injection
 ```
 
 Expected outcome:
@@ -25,7 +29,11 @@ Expected outcome:
 ## Optional benign scenario
 
 ```bash
-python examples/agent_testbed.py --scenario benign
+bash scripts/run-agent-testbed.sh --scenario benign
+```
+
+```powershell
+pwsh -File .\scripts\run-agent-testbed.ps1 --scenario benign
 ```
 
 This helps verify normal-path behavior in the same harness.
@@ -33,7 +41,11 @@ This helps verify normal-path behavior in the same harness.
 ## Optional taint-laundering scenario
 
 ```bash
-python examples/agent_testbed.py --scenario taint_laundering
+bash scripts/run-agent-testbed.sh --scenario taint_laundering
+```
+
+```powershell
+pwsh -File .\scripts\run-agent-testbed.ps1 --scenario taint_laundering
 ```
 
 This verifies that decoded/rewritten malicious content from untrusted retrieval

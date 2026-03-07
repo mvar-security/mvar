@@ -9,9 +9,9 @@ Core invariant:
 ## Reproduce
 
 ```bash
-python examples/agent_testbed.py --scenario rag_injection
-python examples/agent_testbed.py --scenario taint_laundering
-python examples/agent_testbed.py --scenario benign
+bash scripts/run-agent-testbed.sh --scenario rag_injection
+bash scripts/run-agent-testbed.sh --scenario taint_laundering
+bash scripts/run-agent-testbed.sh --scenario benign
 ```
 
 ## Captured Run Output
