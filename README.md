@@ -12,6 +12,42 @@ Deterministic enforcement that prevents prompt-injection attacks from reaching t
 
 ---
 
+## What MVAR Is
+
+MVAR is a deterministic execution security layer for AI agents.
+
+It sits between an LLM and the tools it can execute (shell, APIs, files, etc.) and enforces policy **before privileged actions run**.
+
+Instead of trying to detect prompt injections at the prompt layer, MVAR enforces **execution-time invariants**:
+
+`UNTRUSTED input + CRITICAL sink -> BLOCK`
+
+This prevents prompt-injection attacks from turning model output into real system actions.
+
+MVAR can be used with any agent runtime that allows tool execution, including LangChain, OpenAI Agents, CrewAI, AutoGen, and OpenClaw.
+
+## Quick Start
+
+Install MVAR and wrap any tool that performs privileged actions.
+
+```python
+from mvar import protect
+
+safe_tool = protect(my_bash_tool)
+```
+
+Now any attempt to execute a dangerous command originating from untrusted inputs will be blocked before the tool runs.
+
+## Why This Matters Now
+
+LLM agents are rapidly gaining the ability to execute real-world actions: shell commands, API calls, file access, and credential use.
+
+Most current defenses focus on **prompt filtering or heuristic detection**. But prompt-injection attacks succeed when model output reaches **execution sinks**.
+
+MVAR enforces security at that boundary.
+
+Instead of trying to detect malicious prompts, MVAR prevents untrusted inputs from reaching privileged operations in the first place.
+
 ## One-Line Protection
 
 ```python
