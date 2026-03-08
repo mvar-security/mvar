@@ -6,13 +6,19 @@
 
 # MVAR — Deterministic Security for AI Agents
 
-**If your agent can run shell commands, call APIs, read files, or use credentials, prompt injection can become real execution.** MVAR prevents that by enforcing deterministic policy between model output and privileged tools. It works with modern agent runtimes, including MCP- and OpenClaw-style tool chains. See the governed runtime proof for a reproducible benign-pass / adversarial-block demo.
+**If your AI agent can run shell commands, call APIs, read files, or use credentials, prompt injection can escalate into real execution.**
 
-Recent agent-runtime incidents have made one thing clear: prompt filtering is not enough once model output can reach execution sinks.
+Most defenses attempt to filter malicious prompts. That fails once model output reaches privileged tools.
+
+**MVAR prevents this by enforcing deterministic policy between LLM output and execution sinks.** It works with modern agent runtimes, including MCP- and OpenClaw-style tool chains. See the governed runtime proof for a reproducible benign-pass / adversarial-block demo.
 
 **MVAR is the execution firewall for AI agents.**
 
 Invariant: `UNTRUSTED input + CRITICAL sink -> BLOCK`
+
+`50 attack vectors blocked` · `200 benign vectors passed` · `CI-gated launch validation`
+
+## Try It In 30 Seconds
 
 [30-Second Proof](#30-second-proof) · [Quick Start](#quick-start) · [Governed MCP Proof](docs/outreach/GOVERNED_MCP_RUNTIME_PROOF.md) · [Adapters](docs/FIRST_PARTY_ADAPTERS.md)
 
@@ -233,6 +239,7 @@ This README is intentionally front-loaded for fast evaluation. Detailed material
 - Demos and reproducible testbeds: [docs/demos/DEMOS_AND_TESTBEDS.md](docs/demos/DEMOS_AND_TESTBEDS.md)
 - Adapter contracts and integration playbook: [docs/ADAPTER_SPEC.md](docs/ADAPTER_SPEC.md), [docs/AGENT_INTEGRATION_PLAYBOOK.md](docs/AGENT_INTEGRATION_PLAYBOOK.md), [conformance/README.md](conformance/README.md)
 - Security profiles, trust posture, and observability: [docs/SECURITY_PROFILES.md](docs/SECURITY_PROFILES.md), [TRUST.md](TRUST.md), [docs/OBSERVABILITY.md](docs/OBSERVABILITY.md)
+- Agent-runtime risk class explainer: [docs/security/AGENT_RUNTIME_INCIDENT_CLASS.md](docs/security/AGENT_RUNTIME_INCIDENT_CLASS.md)
 - Performance, non-goals, threat model: [docs/PERFORMANCE_AND_THREAT_MODEL.md](docs/PERFORMANCE_AND_THREAT_MODEL.md)
 - Research paper: [docs/papers/execution-witness-binding.pdf](docs/papers/execution-witness-binding.pdf)
 
