@@ -2,6 +2,33 @@
 
 MVAR now includes first-party adapter wrappers for common agent ecosystems.
 
+## Install (Adapters Included)
+
+Install from source (recommended while developing):
+
+```bash
+git clone https://github.com/mvar-security/mvar.git
+cd mvar
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -U pip setuptools wheel
+python -m pip install . pytest
+```
+
+Or install published package version:
+
+```bash
+pip install mvar
+```
+
+Quick import check:
+
+```bash
+python -c "from mvar_adapters import MVARMCPAdapter; print('adapter import ok')"
+```
+
+Full install guide: [../INSTALL.md](../INSTALL.md)
+
 ## Included wrappers
 
 - `mvar_adapters.langchain.MVARLangChainAdapter`

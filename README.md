@@ -120,7 +120,9 @@ If your agent can turn model output into real-world actions, MVAR constrains tha
 - CrewAI
 - OpenClaw
 
-Adapter docs: [docs/FIRST_PARTY_ADAPTERS.md](docs/FIRST_PARTY_ADAPTERS.md)
+Install first: [INSTALL.md#installation](INSTALL.md#installation)
+
+Then pick an adapter quickstart: [docs/FIRST_PARTY_ADAPTERS.md](docs/FIRST_PARTY_ADAPTERS.md)
 
 ## Architecture At A Glance
 
