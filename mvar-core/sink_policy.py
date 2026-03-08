@@ -261,6 +261,7 @@ class SinkPolicy:
         self.max_blob_len = int(os.getenv("MVAR_MAX_BLOB_LEN", "32768"))
         self._expected_policy_hash = os.getenv("MVAR_EXPECTED_POLICY_HASH", "").strip()
         self.require_signed_policy_bundle = os.getenv("MVAR_REQUIRE_SIGNED_POLICY_BUNDLE", "0") == "1"
+        self.enforce_ed25519 = os.getenv("MVAR_ENFORCE_ED25519", "0") == "1"
         self.policy_bundle_path = os.getenv("MVAR_POLICY_BUNDLE_PATH", "").strip()
         self._policy_bundle_secret = os.getenv(
             "MVAR_POLICY_BUNDLE_SECRET",
@@ -674,7 +675,7 @@ class SinkPolicy:
 
     def write_signed_policy_bundle(self, bundle_path: Optional[str] = None, issuer: str = "mvar_runtime") -> Dict[str, Any]:
         """Emit signed policy bundle for deterministic startup verification."""
-        if not self._policy_bundle_secret:
+        if not self._policy_bundle_secret and not self.enforce_ed25519:
             raise RuntimeError("policy bundle secret missing")
         target_path = bundle_path or self.policy_bundle_path
         if not target_path:
@@ -683,6 +684,7 @@ class SinkPolicy:
             canonical_payload=self._canonical_policy_payload(),
             secret=self._policy_bundle_secret,
             issuer=issuer,
+            enforce_ed25519=self.enforce_ed25519,
         )
         path = Path(target_path)
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -705,7 +707,7 @@ class SinkPolicy:
             return None
         if not self.policy_bundle_path:
             return "Signed policy bundle required but MVAR_POLICY_BUNDLE_PATH is unset"
-        if not self._policy_bundle_secret:
+        if not self._policy_bundle_secret and not self.enforce_ed25519:
             return "Signed policy bundle required but secret is missing"
 
         bundle_file = Path(self.policy_bundle_path)
@@ -716,7 +718,14 @@ class SinkPolicy:
         except Exception as exc:
             return f"Signed policy bundle parse failed: {exc}"
 
-        if not verify_signed_bundle(bundle, self._policy_bundle_secret):
+        if self.enforce_ed25519 and str(bundle.get("algorithm", "")).lower() != "ed25519":
+            return "Signed policy bundle must use algorithm=ed25519 when MVAR_ENFORCE_ED25519=1"
+        if not verify_signed_bundle(bundle, self._policy_bundle_secret, enforce_ed25519=self.enforce_ed25519):
+            if self.enforce_ed25519:
+                return (
+                    "Signed policy bundle signature verification failed "
+                    "(Ed25519 required; ensure cryptography/public key configuration is valid)"
+                )
             return "Signed policy bundle signature verification failed"
         bundle_hash = str(bundle.get("policy_hash", ""))
         if bundle_hash != policy_hash:

@@ -159,7 +159,14 @@ class QSealSigner:
         self._private_key: Optional[Any] = None
         self._public_key: Optional[Any] = None
         self._public_key_hex: str = ""
+        self._enforce_ed25519 = os.getenv("MVAR_ENFORCE_ED25519", "0") == "1"
         self._algorithm = "ed25519" if _CRYPTO_AVAILABLE else "hmac-sha256"
+
+        if self._enforce_ed25519 and not _CRYPTO_AVAILABLE:
+            raise RuntimeError(
+                "MVAR_ENFORCE_ED25519=1 requires the 'cryptography' package "
+                "(Ed25519 unavailable; refusing HMAC fallback)"
+            )
 
         try:
             if _CRYPTO_AVAILABLE:
@@ -173,6 +180,12 @@ class QSealSigner:
                 self._init_ed25519_keys()
             else:
                 self._init_hmac_fallback()
+
+        if self._enforce_ed25519 and self._algorithm != "ed25519":
+            raise RuntimeError(
+                "MVAR_ENFORCE_ED25519=1 requires Ed25519 signer initialization; "
+                "fallback algorithms are not permitted"
+            )
 
         logger.info(
             "QSealSigner initialized | algorithm=%s | key_dir=%s",
