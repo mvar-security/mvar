@@ -28,7 +28,6 @@ Invariant: `UNTRUSTED input + CRITICAL sink -> BLOCK`
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE.md)
 
 ---
-
 ## 30-Second Proof
 
 ```bash
