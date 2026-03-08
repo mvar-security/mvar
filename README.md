@@ -6,7 +6,15 @@
 
 # MVAR — Deterministic Security for AI Agents
 
-MVAR prevents prompt-injection attacks from turning LLM output into real system actions.
+**If your agent can run shell commands, call APIs, read files, or use credentials, prompt injection can become real execution.** MVAR prevents that by enforcing deterministic policy between model output and privileged tools. It works with modern agent runtimes, including MCP- and OpenClaw-style tool chains. See the governed runtime proof for a reproducible benign-pass / adversarial-block demo.
+
+Recent agent-runtime incidents have made one thing clear: prompt filtering is not enough once model output can reach execution sinks.
+
+**MVAR is the execution firewall for AI agents.**
+
+Invariant: `UNTRUSTED input + CRITICAL sink -> BLOCK`
+
+[30-Second Proof](#30-second-proof) · [Quick Start](#quick-start) · [Governed MCP Proof](docs/outreach/GOVERNED_MCP_RUNTIME_PROOF.md) · [Adapters](docs/FIRST_PARTY_ADAPTERS.md)
 
 [![Launch Gate](https://github.com/mvar-security/mvar/actions/workflows/launch-gate.yml/badge.svg)](https://github.com/mvar-security/mvar/actions/workflows/launch-gate.yml)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/mvar-security/mvar/badge)](https://scorecard.dev/viewer/?uri=github.com/mvar-security/mvar)
@@ -14,22 +22,6 @@ MVAR prevents prompt-injection attacks from turning LLM output into real system 
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE.md)
 
 ---
-
-MVAR is the execution firewall for AI agents.
-
-It sits between an LLM and privileged tools (shell, APIs, files, credentials) and enforces deterministic policy before privileged actions run.
-
-`50 attack vectors blocked` · `200 benign vectors passed` · `CI-gated launch validation`
-
-**Invariant:** `UNTRUSTED input + CRITICAL sink -> BLOCK`
-
----
-
-- ➡ [30-Second Proof](#30-second-proof)
-- ➡ [Quick Start](#quick-start)
-- ➡ [Validation](#validation)
-- ➡ [Who This Is For](#who-this-is-for)
-- ➡ [Deployment Modes](#deployment-modes-current)
 
 ## 30-Second Proof
 
