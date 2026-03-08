@@ -10,6 +10,7 @@ from sink_policy import PolicyOutcome
 
 _PROFILE_KEYS = {
     "MVAR_FAIL_CLOSED",
+    "MVAR_ENFORCE_ED25519",
     "MVAR_REQUIRE_EXECUTION_TOKEN",
     "MVAR_EXECUTION_TOKEN_ONE_TIME",
     "MVAR_EXECUTION_TOKEN_NONCE_PERSIST",
@@ -36,6 +37,8 @@ def test_profile_summary_contains_expected_keys():
     summary = profile_summary(SecurityProfile.STRICT)
     assert summary["MVAR_REQUIRE_EXECUTION_TOKEN"] == "1"
     assert summary["MVAR_ENABLE_COMPOSITION_RISK"] == "1"
+    assert summary["MVAR_ENFORCE_ED25519"] == "1"
+    assert summary["MVAR_REQUIRE_SIGNED_POLICY_BUNDLE"] == "1"
 
 
 def test_apply_profile_balanced_sets_core_hardening():
@@ -45,6 +48,16 @@ def test_apply_profile_balanced_sets_core_hardening():
         assert os.environ["MVAR_REQUIRE_EXECUTION_TOKEN"] == "1"
         assert os.environ["MVAR_ENABLE_COMPOSITION_RISK"] == "1"
         assert os.environ["MVAR_EXECUTION_TOKEN_NONCE_PERSIST"] == "0"
+    finally:
+        _restore_env(snap)
+
+
+def test_apply_profile_strict_enables_enterprise_roots():
+    snap = _snapshot_env()
+    try:
+        apply_profile(SecurityProfile.STRICT)
+        assert os.environ["MVAR_ENFORCE_ED25519"] == "1"
+        assert os.environ["MVAR_REQUIRE_SIGNED_POLICY_BUNDLE"] == "1"
     finally:
         _restore_env(snap)
 

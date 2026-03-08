@@ -4,17 +4,22 @@ import json
 import os
 from pathlib import Path
 
+import pytest
+
 import test_common  # noqa: F401
 from capability import CapabilityGrant, CapabilityRuntime, CapabilityType
+from policy_bundle import build_signed_bundle
 from provenance import ProvenanceGraph, provenance_user_input
 from sink_policy import PolicyOutcome, SinkPolicy, register_common_sinks
 
 
-def _build_policy(bundle_path: str, require_bundle: bool, secret: str):
+def _build_policy(bundle_path: str, require_bundle: bool, secret: str, enforce_ed25519: bool = False):
     tracked = [
         "MVAR_REQUIRE_SIGNED_POLICY_BUNDLE",
+        "MVAR_ENFORCE_ED25519",
         "MVAR_POLICY_BUNDLE_PATH",
         "MVAR_POLICY_BUNDLE_SECRET",
+        "MVAR_POLICY_BUNDLE_KEY_DIR",
         "MVAR_ENABLE_LEDGER",
         "MVAR_ENABLE_TRUST_ORACLE",
         "MVAR_FAIL_CLOSED",
@@ -22,8 +27,10 @@ def _build_policy(bundle_path: str, require_bundle: bool, secret: str):
     previous = {key: os.environ.get(key) for key in tracked}
 
     os.environ["MVAR_REQUIRE_SIGNED_POLICY_BUNDLE"] = "1" if require_bundle else "0"
+    os.environ["MVAR_ENFORCE_ED25519"] = "1" if enforce_ed25519 else "0"
     os.environ["MVAR_POLICY_BUNDLE_PATH"] = bundle_path
     os.environ["MVAR_POLICY_BUNDLE_SECRET"] = secret
+    os.environ["MVAR_POLICY_BUNDLE_KEY_DIR"] = str(Path(bundle_path).parent / "bundle_keys")
     os.environ["MVAR_ENABLE_LEDGER"] = "0"
     os.environ["MVAR_ENABLE_TRUST_ORACLE"] = "0"
     os.environ["MVAR_FAIL_CLOSED"] = "1"
@@ -104,5 +111,53 @@ def test_tampered_signed_policy_bundle_blocks_startup(tmp_path: Path):
         )
         assert decision.outcome == PolicyOutcome.BLOCK
         assert "startup policy verification failed" in decision.reason.lower()
+    finally:
+        restore()
+
+
+def test_strict_ed25519_mode_rejects_hmac_bundle(tmp_path: Path):
+    bundle_path = str(tmp_path / "hmac_bundle.json")
+    policy, node_id, restore = _build_policy(
+        bundle_path,
+        require_bundle=True,
+        secret="bundle_secret",
+        enforce_ed25519=True,
+    )
+    try:
+        canonical = policy._canonical_policy_payload()
+        hmac_bundle = build_signed_bundle(canonical, b"bundle_secret", issuer="pytest", enforce_ed25519=False)
+        Path(bundle_path).write_text(json.dumps(hmac_bundle, sort_keys=True), encoding="utf-8")
+
+        decision = policy.evaluate(
+            tool="filesystem",
+            action="read",
+            target="/tmp/report.txt",
+            provenance_node_id=node_id,
+        )
+        assert decision.outcome == PolicyOutcome.BLOCK
+        assert "algorithm=ed25519" in decision.reason
+    finally:
+        restore()
+
+
+def test_strict_ed25519_mode_accepts_ed25519_bundle(tmp_path: Path):
+    pytest.importorskip("cryptography")
+    bundle_path = str(tmp_path / "ed25519_bundle.json")
+    policy, node_id, restore = _build_policy(
+        bundle_path,
+        require_bundle=True,
+        secret="bundle_secret",
+        enforce_ed25519=True,
+    )
+    try:
+        policy.write_signed_policy_bundle(bundle_path, issuer="pytest")
+        decision = policy.evaluate(
+            tool="filesystem",
+            action="read",
+            target="/tmp/report.txt",
+            provenance_node_id=node_id,
+        )
+        assert decision.outcome == PolicyOutcome.ALLOW
+        assert any("startup_policy_verification: ok" in line for line in decision.evaluation_trace)
     finally:
         restore()

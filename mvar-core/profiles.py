@@ -27,17 +27,18 @@ class SecurityProfile(str, Enum):
 PROFILE_ENV: Dict[SecurityProfile, Dict[str, str]] = {
     SecurityProfile.STRICT: {
         "MVAR_FAIL_CLOSED": "1",
+        "MVAR_ENFORCE_ED25519": "1",
         "MVAR_REQUIRE_EXECUTION_TOKEN": "1",
         "MVAR_EXECUTION_TOKEN_ONE_TIME": "1",
         "MVAR_EXECUTION_TOKEN_NONCE_PERSIST": "1",
         "MVAR_ENABLE_COMPOSITION_RISK": "1",
         "MVAR_REQUIRE_DECLASSIFY_TOKEN": "1",
         "MVAR_DECLASSIFY_TOKEN_ONE_TIME": "1",
-        # Keep optional by default to avoid accidental hard lockouts in local quickstarts.
-        "MVAR_REQUIRE_SIGNED_POLICY_BUNDLE": "0",
+        "MVAR_REQUIRE_SIGNED_POLICY_BUNDLE": "1",
     },
     SecurityProfile.BALANCED: {
         "MVAR_FAIL_CLOSED": "1",
+        "MVAR_ENFORCE_ED25519": "0",
         "MVAR_REQUIRE_EXECUTION_TOKEN": "1",
         "MVAR_EXECUTION_TOKEN_ONE_TIME": "1",
         "MVAR_EXECUTION_TOKEN_NONCE_PERSIST": "0",
@@ -48,6 +49,7 @@ PROFILE_ENV: Dict[SecurityProfile, Dict[str, str]] = {
     },
     SecurityProfile.MONITOR: {
         "MVAR_FAIL_CLOSED": "1",
+        "MVAR_ENFORCE_ED25519": "0",
         "MVAR_REQUIRE_EXECUTION_TOKEN": "0",
         "MVAR_EXECUTION_TOKEN_ONE_TIME": "0",
         "MVAR_EXECUTION_TOKEN_NONCE_PERSIST": "0",
