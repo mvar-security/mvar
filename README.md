@@ -123,6 +123,8 @@ Install first: [INSTALL.md#installation](INSTALL.md#installation)
 
 Then pick an adapter quickstart: [docs/FIRST_PARTY_ADAPTERS.md](docs/FIRST_PARTY_ADAPTERS.md)
 
+Need source + quickstart per adapter: [Adapter Code + Quickstart Map](docs/FIRST_PARTY_ADAPTERS.md#adapter-code--quickstart-map)
+
 ## Architecture At A Glance
 
 ```text
