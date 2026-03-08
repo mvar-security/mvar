@@ -1,5 +1,10 @@
 # Unreleased
 
+## Post-v1.3.0
+
+- Release `v1.3.0` cut with strict-mode enterprise hardening.
+- See [v1.3.0 release notes](./v1.3.0.md) for shipped changes.
+
 ## Maintainer and Adoption Hygiene
 
 - Added integration-request intake template:
