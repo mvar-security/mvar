@@ -151,6 +151,7 @@ Spec links:
 
 - [`spec/execution_intent/v1.schema.json`](spec/execution_intent/v1.schema.json)
 - [`spec/decision_record/v1.schema.json`](spec/decision_record/v1.schema.json)
+- Execution contract model (one-page): [docs/architecture/execution_contract_model.md](docs/architecture/execution_contract_model.md)
 
 ## Verify in 60 Seconds
 
@@ -245,6 +246,7 @@ This README is intentionally front-loaded for fast evaluation. Detailed material
 
 - Why boundary enforcement (not prompt filtering): [docs/WHY_CONTROL_PLANE_NOT_FILTERS.md](docs/WHY_CONTROL_PLANE_NOT_FILTERS.md)
 - Full architecture and design lineage: [ARCHITECTURE.md](ARCHITECTURE.md), [DESIGN_LINEAGE.md](DESIGN_LINEAGE.md)
+- Execution contract model (current vs planned scope): [docs/architecture/execution_contract_model.md](docs/architecture/execution_contract_model.md)
 - Validation showcases and attack trilogy: [docs/ATTACK_VALIDATION_SHOWCASE.md](docs/ATTACK_VALIDATION_SHOWCASE.md), [docs/AGENT_TESTBED.md](docs/AGENT_TESTBED.md)
 - Integration examples: [docs/integration/USE_MVAR_IN_YOUR_AGENT.md](docs/integration/USE_MVAR_IN_YOUR_AGENT.md)
 - Demos and reproducible testbeds: [docs/demos/DEMOS_AND_TESTBEDS.md](docs/demos/DEMOS_AND_TESTBEDS.md)
