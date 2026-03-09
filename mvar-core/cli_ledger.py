@@ -35,9 +35,11 @@ Usage:
 
 import sys
 import os
+import json
 import hashlib
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any, Dict, List, Tuple
 
 from .decision_ledger import MVARDecisionLedger
 
@@ -332,6 +334,131 @@ def mvar_allow_expire():
     except Exception as e:
         print(f"❌ Failed to revoke override: {e}")
         sys.exit(1)
+
+
+def _load_witness_scrolls(witness_path: str) -> Tuple[List[Tuple[str, Dict[str, Any]]], List[str]]:
+    path = Path(witness_path)
+    if not path.exists():
+        return [], ["missing_file"]
+
+    content = path.read_text(encoding="utf-8").strip()
+    if not content:
+        return [], ["witness_file_empty"]
+
+    if path.suffix.lower() == ".jsonl":
+        records: List[Tuple[str, Dict[str, Any]]] = []
+        for idx, line in enumerate(content.splitlines(), start=1):
+            label = f"line_{idx}"
+            if not line.strip():
+                continue
+            try:
+                item = json.loads(line)
+            except json.JSONDecodeError:
+                return [], [f"malformed_json:{label}"]
+            if not isinstance(item, dict):
+                return [], [f"non_object_jsonl_line:{label}"]
+            records.append((label, item))
+        if not records:
+            return [], ["witness_file_empty"]
+        return records, []
+
+    try:
+        payload = json.loads(content)
+    except json.JSONDecodeError:
+        return [], ["malformed_json"]
+
+    if isinstance(payload, dict):
+        return [("line_1", payload)], []
+
+    if isinstance(payload, list):
+        records = []
+        for idx, item in enumerate(payload, start=1):
+            label = f"index_{idx}"
+            if not isinstance(item, dict):
+                return [], [f"non_object_json_list_item:{label}"]
+            records.append((label, item))
+        if not records:
+            return [], ["witness_file_empty"]
+        return records, []
+
+    return [], ["non_object_json"]
+
+
+def verify_witness_file(witness_path: str, *, require_chain: bool = False) -> Dict[str, Any]:
+    """
+    Verify portable witness artifacts (JSON/JSONL) produced by MVAR ledger paths.
+
+    Returns machine-readable report fields for signature validity and optional
+    chain integrity checks.
+    """
+    records, load_errors = _load_witness_scrolls(witness_path)
+    if load_errors:
+        return {
+            "witness_path": witness_path,
+            "total_scrolls": 0,
+            "verified_scrolls": 0,
+            "all_signatures_valid": False,
+            "chain_valid": False,
+            "errors": load_errors,
+        }
+
+    ledger = _init_ledger_or_exit()
+    errors: List[str] = []
+    verified = 0
+
+    for label, scroll in records:
+        scroll_id = str(scroll.get("scroll_id", label))
+        if not scroll.get("qseal_signature"):
+            errors.append(f"missing_signature:{label}")
+            continue
+        # Reuse existing ledger verification logic for signature/meta checks.
+        if ledger._verify_scroll(scroll):  # noqa: SLF001
+            verified += 1
+        else:
+            errors.append(f"signature_invalid:{scroll_id}")
+
+    chain_errors: List[str] = []
+    previous_sig = None
+    for idx, (label, scroll) in enumerate(records, start=1):
+        current_sig = scroll.get("qseal_signature")
+        prev_pointer = scroll.get("qseal_prev_signature")
+        if idx == 1:
+            previous_sig = current_sig
+            continue
+        if prev_pointer is None:
+            if require_chain:
+                chain_errors.append(f"chain_missing_prev_signature:{label}")
+        elif previous_sig is not None and prev_pointer != previous_sig:
+            chain_errors.append(f"chain_mismatch:{label}")
+        previous_sig = current_sig
+
+    errors.extend(chain_errors)
+    all_signatures_valid = verified == len(records)
+    chain_valid = len(chain_errors) == 0
+
+    return {
+        "witness_path": witness_path,
+        "total_scrolls": len(records),
+        "verified_scrolls": verified,
+        "all_signatures_valid": all_signatures_valid,
+        "chain_valid": chain_valid,
+        "errors": errors,
+    }
+
+
+def main_verify_witness():
+    """Entry point for 'mvar-verify-witness' binary."""
+    if len(sys.argv) < 2:
+        print("Usage: mvar-verify-witness <witness.json|witness.jsonl> [--require-chain]")
+        sys.exit(1)
+
+    witness_path = sys.argv[1]
+    require_chain = "--require-chain" in sys.argv[2:]
+    report = verify_witness_file(witness_path, require_chain=require_chain)
+    print(json.dumps(report))
+
+    ok = report["all_signatures_valid"] and (report["chain_valid"] or not require_chain)
+    sys.exit(0 if ok else 1)
 
 
 # Entry points for setup.py console_scripts

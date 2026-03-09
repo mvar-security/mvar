@@ -58,6 +58,12 @@ This test validates:
 - evidence fields exist (`envelope_core_hash`, `envelope_full_hash`, signature algorithm)
 - trace linkage is present for chained governed calls
 
+Witness verification (portable artifact check):
+
+```bash
+mvar-verify-witness data/mvar_decisions.jsonl --require-chain
+```
+
 ---
 
 ## Runtime Path (Simplified)
