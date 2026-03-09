@@ -81,3 +81,28 @@ Pass criteria:
 
 - First-party adapters MUST pass conformance harness in CI before release.
 - Third-party adapters SHOULD publish harness results and MVAR version compatibility.
+
+## Governor bridge compatibility surface (v1 freeze)
+
+This section defines the v1 compatibility surface consumed by the MIRRA Execution Governor bridge.
+
+Required adapter entrypoint:
+- `MVARExecutionAdapter.authorize_execution(tool, action, target, provenance_node_id, parameters=None, execution_token=None, pre_evaluated_decision=None)`
+
+Required decision fields (via `PolicyDecision.to_dict()`):
+- `outcome` (`allow|block|step_up`)
+- `reason`
+- `evaluation_trace` (list)
+- `policy_hash`
+- `target_hash`
+- `sink.tool`
+- `sink.action`
+- `sink.risk`
+- `provenance.node_id`
+- `provenance.integrity`
+- `provenance.confidentiality`
+
+Contract policy:
+- v1.x releases MUST preserve the method name and parameter order above.
+- v1.x releases MUST preserve decision fields above.
+- Any breaking change requires a major-version bump and explicit migration guidance.
