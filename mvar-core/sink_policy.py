@@ -274,6 +274,7 @@ class SinkPolicy:
         self.execution_token_ttl_seconds = int(os.getenv("MVAR_EXECUTION_TOKEN_TTL_SECONDS", "300"))
         self.execution_token_one_time = os.getenv("MVAR_EXECUTION_TOKEN_ONE_TIME", "1") == "1"
         self.execution_token_nonce_persist = os.getenv("MVAR_EXECUTION_TOKEN_NONCE_PERSIST", "0") == "1"
+        self.require_execution_contract = os.getenv("MVAR_REQUIRE_EXECUTION_CONTRACT", "0") == "1"
         self.execution_token_nonce_store_path = os.getenv(
             "MVAR_EXEC_TOKEN_NONCE_STORE",
             "data/mvar_execution_token_nonces.jsonl",
@@ -388,6 +389,73 @@ class SinkPolicy:
             return []
         return [str(domain).strip().lower() for domain in metadata_domains if str(domain).strip()]
 
+    @staticmethod
+    def _stable_hash(payload: Dict[str, Any]) -> str:
+        encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
+        return hashlib.sha256(encoded).hexdigest()
+
+    def _requires_execution_contract(self, tool: str, action: str) -> bool:
+        if not self.require_execution_contract:
+            return False
+        return (tool.lower(), action.lower()) in {("bash", "exec"), ("http", "post")}
+
+    def _execution_contract_payload(
+        self,
+        tool: str,
+        action: str,
+        target: str,
+        parameters: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        tool_norm = tool.lower()
+        action_norm = action.lower()
+        payload: Dict[str, Any] = {
+            "tool": tool_norm,
+            "action": action_norm,
+            "target": str(target or ""),
+        }
+
+        params = parameters or {}
+        if tool_norm == "bash" and action_norm == "exec":
+            command = str(params.get("command", target or ""))
+            env = params.get("env", {})
+            env_keys = sorted(str(key) for key in env.keys()) if isinstance(env, dict) else []
+            payload.update(
+                {
+                    "command": command,
+                    "env_keys": env_keys,
+                }
+            )
+        elif tool_norm == "http" and action_norm == "post":
+            raw_url = target if "://" in target else f"https://{target}"
+            parsed = urlparse(raw_url)
+            method = str(params.get("method", "POST")).upper()
+            headers = params.get("headers", {})
+            header_keys = sorted(str(key).lower() for key in headers.keys()) if isinstance(headers, dict) else []
+            body = params.get("body", params.get("data"))
+            if body is None:
+                body_hash = ""
+            elif isinstance(body, (bytes, bytearray)):
+                body_hash = hashlib.sha256(bytes(body)).hexdigest()
+            elif isinstance(body, (dict, list)):
+                body_hash = hashlib.sha256(
+                    json.dumps(body, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
+                ).hexdigest()
+            else:
+                body_hash = hashlib.sha256(str(body).encode("utf-8")).hexdigest()
+            payload.update(
+                {
+                    "method": method,
+                    "scheme": (parsed.scheme or "https").lower(),
+                    "hostname": (parsed.hostname or "").lower(),
+                    "port": parsed.port or (443 if (parsed.scheme or "https").lower() == "https" else 80),
+                    "path": parsed.path or "/",
+                    "query": parsed.query or "",
+                    "header_keys": header_keys,
+                    "body_hash": body_hash,
+                }
+            )
+        return payload
+
     def _contains_encoded_secret_payload(self, blobs: List[str]) -> bool:
         b64_re = re.compile(r"\b[A-Za-z0-9+/]{24,}={0,2}\b")
         for blob in blobs:
@@ -401,7 +469,14 @@ class SinkPolicy:
                     continue
         return False
 
-    def _issue_execution_token(self, sink: SinkClassification, target: str, provenance_node_id: str, policy_hash: str) -> Optional[Dict[str, Any]]:
+    def _issue_execution_token(
+        self,
+        sink: SinkClassification,
+        target: str,
+        provenance_node_id: str,
+        policy_hash: str,
+        parameters: Optional[Dict[str, Any]] = None,
+    ) -> Optional[Dict[str, Any]]:
         if not self._execution_token_secret:
             if self.fail_closed:
                 return None
@@ -420,6 +495,16 @@ class SinkPolicy:
             "nonce": os.urandom(16).hex(),
             "algorithm": "hmac-sha256",
         }
+        if self._requires_execution_contract(sink.tool, sink.action):
+            payload["contract_version"] = "execution_contract_v1"
+            payload["invocation_hash"] = self._stable_hash(
+                self._execution_contract_payload(
+                    sink.tool,
+                    sink.action,
+                    target,
+                    parameters=parameters,
+                )
+            )
         payload_str = json.dumps(payload, sort_keys=True, separators=(",", ":"))
         payload["signature"] = hmac.new(
             self._execution_token_secret,
@@ -489,6 +574,7 @@ class SinkPolicy:
         target: str,
         provenance_node_id: str,
         policy_hash: str,
+        parameters: Optional[Dict[str, Any]] = None,
     ) -> bool:
         if not token or not self._execution_token_secret:
             return False
@@ -515,6 +601,14 @@ class SinkPolicy:
                 return False
             if token.get("target_hash") != hashlib.sha256(target.encode("utf-8")).hexdigest():
                 return False
+            if self._requires_execution_contract(tool, action):
+                if token.get("contract_version") != "execution_contract_v1":
+                    return False
+                expected_invocation_hash = self._stable_hash(
+                    self._execution_contract_payload(tool, action, target, parameters=parameters)
+                )
+                if token.get("invocation_hash") != expected_invocation_hash:
+                    return False
             signature = token.get("signature", "")
             verify_payload = {k: v for k, v in token.items() if k != "signature"}
             verify_str = json.dumps(verify_payload, sort_keys=True, separators=(",", ":"))
@@ -1159,6 +1253,7 @@ class SinkPolicy:
             capability_granted=capability_granted,
             evaluation_trace=evaluation_trace,
             target=target,
+            parameters=parameters,
             trust_adjusted=trust_adjusted,
             policy_hash=policy_hash
         )
@@ -1214,11 +1309,16 @@ class SinkPolicy:
         token = execution_token
         if token is None and pre_evaluated_decision is not None:
             token = decision.execution_token
-        if self.require_execution_token and decision.outcome in (PolicyOutcome.ALLOW, PolicyOutcome.STEP_UP):
+        contract_required = self._requires_execution_contract(tool, action)
+        if (self.require_execution_token or contract_required) and decision.outcome in (PolicyOutcome.ALLOW, PolicyOutcome.STEP_UP):
             if not token:
                 decision.outcome = PolicyOutcome.BLOCK
-                decision.reason = "Execution token required but missing"
-                decision.evaluation_trace.append("execution_token_required_missing → BLOCK")
+                if contract_required:
+                    decision.reason = "Execution contract required but missing"
+                    decision.evaluation_trace.append("execution_contract_required_missing → BLOCK")
+                else:
+                    decision.reason = "Execution token required but missing"
+                    decision.evaluation_trace.append("execution_token_required_missing → BLOCK")
                 return decision
             if not self.verify_execution_token(
                 token,
@@ -1227,10 +1327,15 @@ class SinkPolicy:
                 target=target,
                 provenance_node_id=provenance_node_id,
                 policy_hash=decision.policy_hash,
+                parameters=parameters,
             ):
                 decision.outcome = PolicyOutcome.BLOCK
-                decision.reason = "Execution token invalid"
-                decision.evaluation_trace.append("execution_token_invalid → BLOCK")
+                if contract_required:
+                    decision.reason = "Execution contract invalid"
+                    decision.evaluation_trace.append("execution_contract_invalid → BLOCK")
+                else:
+                    decision.reason = "Execution token invalid"
+                    decision.evaluation_trace.append("execution_token_invalid → BLOCK")
             else:
                 try:
                     nonce_scroll_id = self._consume_execution_token_nonce(
@@ -1264,6 +1369,7 @@ class SinkPolicy:
         capability_granted: bool,
         evaluation_trace: List[str],
         target: str = "",
+        parameters: Optional[Dict[str, Any]] = None,
         trust_adjusted: bool = False,
         policy_hash: str = ""
     ) -> PolicyDecision:
@@ -1371,6 +1477,7 @@ class SinkPolicy:
                     target=target,
                     provenance_node_id=provenance_node_id,
                     policy_hash=policy_hash,
+                    parameters=parameters,
                 )
                 if self.require_execution_token and execution_token is None:
                     decision.outcome = PolicyOutcome.BLOCK

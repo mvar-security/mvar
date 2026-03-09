@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from functools import wraps
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, Optional, Tuple
 
 from mvar_adapters.base import MVARExecutionAdapter
 from mvar_core import __version__
@@ -49,6 +49,25 @@ def _policy_profile_for_record(profile: SecurityProfile) -> str:
     return profile.value
 
 
+def _infer_action(tool_name: str, explicit_action: Optional[str]) -> str:
+    if explicit_action:
+        return explicit_action
+    normalized_tool = tool_name.strip().lower()
+    if normalized_tool in {"bash", "shell", "sh", "zsh", "cmd", "powershell"}:
+        return "exec"
+    if normalized_tool in {"http", "https"}:
+        return "post"
+    return "execute"
+
+
+def _default_target_extractor(args: Tuple[Any, ...], kwargs: Dict[str, Any]) -> str:
+    if args:
+        return str(args[0])
+    if "target" in kwargs:
+        return str(kwargs["target"])
+    return "unknown"
+
+
 def _to_decision_record(decision: Any, profile: SecurityProfile) -> Dict[str, Any]:
     raw = decision.to_dict()
     return {
@@ -90,6 +109,8 @@ def protect(
     profile: str = "balanced",
     trusted: bool = False,
     tool_name: Optional[str] = None,
+    action: Optional[str] = None,
+    target_extractor: Optional[Callable[[Tuple[Any, ...], Dict[str, Any]], str]] = None,
 ) -> Callable:
     """Wrap a tool callable with MVAR policy enforcement.
 
@@ -110,6 +131,8 @@ def protect(
     adapter = MVARExecutionAdapter(policy, graph)
 
     resolved_tool_name = tool_name or getattr(tool_fn, "__name__", "tool")
+    resolved_action = _infer_action(resolved_tool_name, action)
+    resolved_target_extractor = target_extractor or _default_target_extractor
     if trusted:
         provenance_node_id = adapter.create_user_provenance(resolved_tool_name)
     else:
@@ -120,14 +143,23 @@ def protect(
 
     @wraps(tool_fn)
     def _wrapped(*args: Any, **kwargs: Any) -> Any:
-        # v1 heuristic: derive target from first positional argument; expose
-        # explicit metadata overrides in a future version.
-        target = str(args[0]) if args else "unknown"
-        decision = adapter.authorize_execution(
+        target = resolved_target_extractor(args, kwargs)
+        parameters = dict(kwargs) if kwargs else None
+        pre_decision = adapter.evaluate(
             tool=resolved_tool_name,
-            action="execute",
+            action=resolved_action,
             target=target,
             provenance_node_id=provenance_node_id,
+            parameters=parameters,
+        )
+        decision = adapter.authorize_execution(
+            tool=resolved_tool_name,
+            action=resolved_action,
+            target=target,
+            provenance_node_id=provenance_node_id,
+            parameters=parameters,
+            execution_token=getattr(pre_decision, "execution_token", None),
+            pre_evaluated_decision=pre_decision,
         )
         decision_record = _to_decision_record(decision, mapped_profile)
 

@@ -24,6 +24,7 @@ class _FakeDecision:
         self._reason = reason
         self._integrity = integrity
         self._risk = risk
+        self.execution_token = {"token": "unit-test-token"}
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -72,6 +73,30 @@ def _install_fake_runtime(
             captured["untrusted_provenance_source"] = source
             return "untrusted-node"
 
+        def evaluate(
+            self,
+            tool: str,
+            action: str,
+            target: str,
+            provenance_node_id: str,
+            parameters: Dict[str, Any] | None = None,
+        ) -> _FakeDecision:
+            captured.setdefault("evaluate_calls", []).append(
+                {
+                    "tool": tool,
+                    "action": action,
+                    "target": target,
+                    "provenance_node_id": provenance_node_id,
+                    "parameters": parameters,
+                }
+            )
+            return _FakeDecision(
+                outcome=outcome,
+                reason=reason,
+                integrity=integrity,
+                risk=risk,
+            )
+
         def authorize_execution(
             self,
             tool: str,
@@ -88,6 +113,9 @@ def _install_fake_runtime(
                     "action": action,
                     "target": target,
                     "provenance_node_id": provenance_node_id,
+                    "parameters": parameters,
+                    "execution_token": execution_token,
+                    "pre_evaluated_decision": pre_evaluated_decision,
                 }
             )
             return _FakeDecision(
@@ -264,3 +292,38 @@ def test_protect_called_twice_same_wrapper(monkeypatch: pytest.MonkeyPatch) -> N
     assert calls["count"] == 2
     assert len(captured["calls"]) == 2
     assert captured["calls"][0]["provenance_node_id"] == captured["calls"][1]["provenance_node_id"]
+
+
+def test_protect_infers_bash_exec_action(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured = _install_fake_runtime(monkeypatch, outcome="allow")
+
+    def tool(command: str) -> str:
+        return command
+
+    wrapped = protect(tool, tool_name="bash")
+    assert wrapped("ls /tmp") == "ls /tmp"
+    assert captured["calls"][-1]["action"] == "exec"
+
+
+def test_protect_infers_http_post_action(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured = _install_fake_runtime(monkeypatch, outcome="allow")
+
+    def tool(target: str, **kwargs: Any) -> str:
+        return target
+
+    wrapped = protect(tool, tool_name="http")
+    assert wrapped("https://api.example.com/upload", method="POST") == "https://api.example.com/upload"
+    assert captured["calls"][-1]["action"] == "post"
+
+
+def test_protect_passes_pre_evaluated_decision_and_token(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured = _install_fake_runtime(monkeypatch, outcome="allow")
+
+    def tool(command: str, *, dry_run: bool = False) -> str:
+        assert dry_run is True
+        return command
+
+    wrapped = protect(tool, tool_name="bash")
+    assert wrapped("echo hello", dry_run=True) == "echo hello"
+    assert captured["calls"][-1]["pre_evaluated_decision"] is not None
+    assert captured["calls"][-1]["execution_token"] == {"token": "unit-test-token"}
