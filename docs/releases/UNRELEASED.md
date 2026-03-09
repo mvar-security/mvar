@@ -1,9 +1,11 @@
 # Unreleased
 
-## Post-v1.3.0
+## Post-v1.4.0
 
-- Release `v1.3.0` cut with strict-mode enterprise hardening.
-- See [v1.3.0 release notes](./v1.3.0.md) for shipped changes.
+- Release `v1.4.0` cut with verified execution contracts and strict egress hardening.
+- See [v1.4.0 release notes](./v1.4.0.md) for shipped changes.
+
+## Historical backlog (pre-v1.4.0)
 
 ## Maintainer and Adoption Hygiene
 
