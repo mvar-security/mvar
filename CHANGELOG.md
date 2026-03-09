@@ -1,30 +1,56 @@
 # Changelog
 
-All notable changes to MVAR are documented in `docs/releases/`.
+This root changelog is the canonical release summary.
+Detailed release notes live under `docs/releases/*`.
 
 ## v1.4.0
 
-- Verified execution contracts for privileged sink calls (`bash.exec`, `http.post`):
-  - invocation hash binding between authorization and exact runtime invocation
-  - fail-closed block behavior for missing/invalid/mutated/replayed contracts
-- Strict-profile HTTP egress hardening:
-  - default deny unless explicitly allowlisted
-  - actionable failure path when allowlist is missing in strict mode
+### What’s New
+- Verified execution contracts required for privileged sink calls (`bash.exec`, `http.post`).
+- Invocation-hash binding and strict egress controls were finalized in the shipped runtime path.
 
-Full release notes: [docs/releases/v1.4.0.md](docs/releases/v1.4.0.md)
+### Security Impact
+- Eliminates decision/execution drift classes for contracted sinks and tightens strict-mode egress posture.
+
+### Validation Snapshot
+- Launch gate: PASS · Attack corpus: 50/50 blocked · Full suite: 294 passing.
+- Details: [docs/releases/v1.4.0.md](docs/releases/v1.4.0.md)
+
+## v1.3.1
+
+### What’s New
+- Strict-profile hardening and release-line hygiene updates were consolidated between v1.3.0 and v1.4.0.
+- Focus remained on preserving governed enforcement continuity while tightening defaults.
+
+### Security Impact
+- Strengthened strict-mode operational posture ahead of execution-contract enforcement landing in v1.4.0.
+
+### Validation Snapshot
+- Launch-gate and attack-corpus validation remained release-blocking in this line.
+- Details: [docs/releases/UNRELEASED.md](docs/releases/UNRELEASED.md)
 
 ## v1.3.0
 
-- Strict-mode enterprise hardening:
-  - Ed25519-only enforcement in strict profile
-  - Mandatory signed policy bundles in strict profile
-  - Explicit fail-closed startup errors for missing/invalid strict prerequisites
+### What’s New
+- Strict mode enforced Ed25519-only verification.
+- Signed policy bundles became mandatory at strict-profile startup.
 
-Full release notes: [docs/releases/v1.3.0.md](docs/releases/v1.3.0.md)
+### Security Impact
+- Removed strict-mode HMAC fallback and enforced authenticated policy roots.
 
-## Previous releases
+### Validation Snapshot
+- Launch gate: PASS · Attack corpus: 50/50 blocked · Red-team gate: 7/7 passing.
+- Details: [docs/releases/v1.3.0.md](docs/releases/v1.3.0.md)
 
-- [v1.2.2](docs/releases/v1.2.2.md)
-- [v1.2.0](docs/releases/v1.2.0.md)
-- [v1.1.0](docs/releases/v1.1.0.md)
-- [v1.0.4](docs/releases/v1.0.4.md)
+## v1.2.3
+
+### What’s New
+- Stabilized pre-v1.3 release line while maintaining deterministic sink-enforcement behavior.
+- Prepared the transition into strict-profile hardening work.
+
+### Security Impact
+- Preserved enforcement baseline with CI-governed validation before strict-profile upgrades.
+
+### Validation Snapshot
+- Launch-gate and corpus validation remained green for the release line.
+- Details: [docs/releases/v1.2.2.md](docs/releases/v1.2.2.md)
