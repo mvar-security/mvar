@@ -1,5 +1,5 @@
 # MVAR Core - Information Flow Control for AI Agents
-__version__ = "1.3.0"
+__version__ = "1.4.0"
 
 try:
     from .profiles import SecurityProfile, apply_profile, create_default_runtime, profile_summary
