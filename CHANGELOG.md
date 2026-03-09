@@ -1,56 +1,28 @@
 # Changelog
 
-This root changelog is the canonical release summary.
+All notable changes to MVAR are documented here.
 Detailed release notes live under `docs/releases/*`.
 
-## v1.4.0
+## [1.4.0] - 2026-03-09 — Verified Execution Contracts
+- **What’s New:** Required verified execution contracts for privileged sink calls with invocation-hash binding at enforcement time.
+- **Security Impact:** Eliminates decision/execution drift for contracted sinks and hardens replay/mutation resistance at the sink boundary.
+- **Validation Snapshot:** Launch gate PASS · Attack corpus 50/50 blocked · Full suite 294 passing.
+- **Details:** [docs/releases/v1.4.0.md](docs/releases/v1.4.0.md)
 
-### What’s New
-- Verified execution contracts required for privileged sink calls (`bash.exec`, `http.post`).
-- Invocation-hash binding and strict egress controls were finalized in the shipped runtime path.
+## [1.3.1] - 2026-03-09 — HTTP Egress Hardening
+- **What’s New:** Added strict-profile default-deny outbound HTTP egress with explicit allowlist control.
+- **Security Impact:** Blocks non-allowlisted egress in strict profile and fails closed when strict allowlist requirements are missing.
+- **Validation Snapshot:** Launch-gate and attack-corpus checks remained release-blocking for this line.
+- **Details:** [docs/releases/UNRELEASED.md](docs/releases/UNRELEASED.md)
 
-### Security Impact
-- Eliminates decision/execution drift classes for contracted sinks and tightens strict-mode egress posture.
+## [1.3.0] - 2026-03-08 — Strict-Mode Enterprise Hardening
+- **What’s New:** Enforced Ed25519-only strict mode and required signed policy bundles at strict startup.
+- **Security Impact:** Removed strict-mode HMAC fallback and anchored strict decisions to authenticated policy roots.
+- **Validation Snapshot:** Launch gate PASS · Attack corpus 50/50 blocked · Full suite 293 passing.
+- **Details:** [docs/releases/v1.3.0.md](docs/releases/v1.3.0.md)
 
-### Validation Snapshot
-- Launch gate: PASS · Attack corpus: 50/50 blocked · Full suite: 294 passing.
-- Details: [docs/releases/v1.4.0.md](docs/releases/v1.4.0.md)
-
-## v1.3.1
-
-### What’s New
-- Strict-profile hardening and release-line hygiene updates were consolidated between v1.3.0 and v1.4.0.
-- Focus remained on preserving governed enforcement continuity while tightening defaults.
-
-### Security Impact
-- Strengthened strict-mode operational posture ahead of execution-contract enforcement landing in v1.4.0.
-
-### Validation Snapshot
-- Launch-gate and attack-corpus validation remained release-blocking in this line.
-- Details: [docs/releases/UNRELEASED.md](docs/releases/UNRELEASED.md)
-
-## v1.3.0
-
-### What’s New
-- Strict mode enforced Ed25519-only verification.
-- Signed policy bundles became mandatory at strict-profile startup.
-
-### Security Impact
-- Removed strict-mode HMAC fallback and enforced authenticated policy roots.
-
-### Validation Snapshot
-- Launch gate: PASS · Attack corpus: 50/50 blocked · Red-team gate: 7/7 passing.
-- Details: [docs/releases/v1.3.0.md](docs/releases/v1.3.0.md)
-
-## v1.2.3
-
-### What’s New
-- Stabilized pre-v1.3 release line while maintaining deterministic sink-enforcement behavior.
-- Prepared the transition into strict-profile hardening work.
-
-### Security Impact
-- Preserved enforcement baseline with CI-governed validation before strict-profile upgrades.
-
-### Validation Snapshot
-- Launch-gate and corpus validation remained green for the release line.
-- Details: [docs/releases/v1.2.2.md](docs/releases/v1.2.2.md)
+## [1.2.3] - 2026-03-08 — README Clarity + Stable Launch Gate
+- **What’s New:** Tightened conversion-first README flow while preserving reproducible proof and validation paths.
+- **Security Impact:** Kept deterministic sink-enforcement posture intact during documentation and launch-surface refactor.
+- **Validation Snapshot:** Launch gate PASS with corpus and CI checks green on the release line.
+- **Details:** [docs/releases/v1.2.2.md](docs/releases/v1.2.2.md)
