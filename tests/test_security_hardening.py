@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 
 import test_common  # noqa: F401
-from capability import CapabilityRuntime, build_shell_tool
+from capability import CapabilityRuntime, CapabilityGrant, CapabilityType, build_shell_tool
 from decision_ledger import MVARDecisionLedger
 from provenance import ProvenanceGraph, provenance_user_input
 from sink_policy import SinkPolicy, register_common_sinks, PolicyOutcome
@@ -91,3 +91,100 @@ def test_ledger_requires_qseal_secret_in_hmac_mode():
     finally:
         if old_secret is not None:
             os.environ["QSEAL_SECRET"] = old_secret
+
+
+def _snapshot_http_env():
+    keys = (
+        "MVAR_HTTP_DEFAULT_DENY",
+        "MVAR_HTTP_ALLOWLIST",
+        "MVAR_REQUIRE_SIGNED_POLICY_BUNDLE",
+    )
+    return {key: os.environ.get(key) for key in keys}
+
+
+def _restore_http_env(snapshot):
+    for key, value in snapshot.items():
+        if value is None:
+            os.environ.pop(key, None)
+        else:
+            os.environ[key] = value
+
+
+def _build_http_policy():
+    graph = ProvenanceGraph(enable_qseal=False)
+    runtime = CapabilityRuntime()
+    runtime.register_tool(
+        "http",
+        capabilities=[
+            CapabilityGrant(
+                cap_type=CapabilityType.NETWORK_EGRESS,
+                allowed_targets=["*"],
+            )
+        ],
+    )
+    policy = SinkPolicy(runtime, graph, enable_qseal=False)
+    register_common_sinks(policy)
+    node = provenance_user_input(graph, "send status update")
+    return graph, policy, node
+
+
+def test_http_egress_default_deny_requires_allowlist():
+    snap = _snapshot_http_env()
+    try:
+        os.environ["MVAR_HTTP_DEFAULT_DENY"] = "1"
+        os.environ["MVAR_HTTP_ALLOWLIST"] = ""
+        os.environ["MVAR_REQUIRE_SIGNED_POLICY_BUNDLE"] = "0"
+        _graph, policy, node = _build_http_policy()
+
+        decision = policy.evaluate(
+            tool="http",
+            action="post",
+            target="https://api.example.com/v1/upload",
+            provenance_node_id=node.node_id,
+        )
+
+        assert decision.outcome == PolicyOutcome.BLOCK
+        assert "allowlist required" in decision.reason.lower()
+    finally:
+        _restore_http_env(snap)
+
+
+def test_http_egress_allowlist_allows_matching_domain():
+    snap = _snapshot_http_env()
+    try:
+        os.environ["MVAR_HTTP_DEFAULT_DENY"] = "1"
+        os.environ["MVAR_HTTP_ALLOWLIST"] = "api.example.com,*.trusted.example"
+        os.environ["MVAR_REQUIRE_SIGNED_POLICY_BUNDLE"] = "0"
+        _graph, policy, node = _build_http_policy()
+
+        decision = policy.evaluate(
+            tool="http",
+            action="post",
+            target="https://api.example.com/v1/upload",
+            provenance_node_id=node.node_id,
+        )
+
+        assert decision.outcome == PolicyOutcome.ALLOW
+    finally:
+        _restore_http_env(snap)
+
+
+def test_http_egress_allowlist_blocks_non_matching_domain():
+    snap = _snapshot_http_env()
+    try:
+        os.environ["MVAR_HTTP_DEFAULT_DENY"] = "1"
+        os.environ["MVAR_HTTP_ALLOWLIST"] = "api.example.com"
+        os.environ["MVAR_REQUIRE_SIGNED_POLICY_BUNDLE"] = "0"
+        _graph, policy, node = _build_http_policy()
+
+        decision = policy.evaluate(
+            tool="http",
+            action="post",
+            target="https://evil.example.net/exfil",
+            provenance_node_id=node.node_id,
+        )
+
+        assert decision.outcome == PolicyOutcome.BLOCK
+        assert "outside allowlist" in decision.reason.lower()
+    finally:
+        _restore_http_env(snap)
