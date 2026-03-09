@@ -62,6 +62,7 @@ setup(
             "mvar-report=mvar_core.cli_ledger:main_report",
             "mvar-explain=mvar_core.cli_ledger:main_explain",
             "mvar-allow=mvar_core.cli_ledger:main_allow",
+            "mvar-verify-witness=mvar_core.cli_ledger:main_verify_witness",
         ],
     },
     include_package_data=True,

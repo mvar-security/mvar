@@ -178,6 +178,14 @@ What this proves:
 - Exact current numbers are published in [STATUS.md](STATUS.md)
 - Repro artifact pack is emitted under `artifacts/repro/<timestamp>/` with checksums and summary JSON
 
+## Execution Witness Chain
+
+MVAR can verify signed witness artifacts offline, including signature validity and previous-signature chain integrity.
+
+```bash
+mvar-verify-witness data/mvar_decisions.jsonl --require-chain
+```
+
 ## Integration and Demos
 
 - Use MVAR in your agent: [docs/integration/USE_MVAR_IN_YOUR_AGENT.md](docs/integration/USE_MVAR_IN_YOUR_AGENT.md)
