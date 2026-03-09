@@ -28,6 +28,7 @@ PROFILE_ENV: Dict[SecurityProfile, Dict[str, str]] = {
     SecurityProfile.STRICT: {
         "MVAR_FAIL_CLOSED": "1",
         "MVAR_ENFORCE_ED25519": "1",
+        "MVAR_REQUIRE_EXECUTION_CONTRACT": "1",
         "MVAR_HTTP_DEFAULT_DENY": "1",
         "MVAR_REQUIRE_EXECUTION_TOKEN": "1",
         "MVAR_EXECUTION_TOKEN_ONE_TIME": "1",
@@ -40,6 +41,7 @@ PROFILE_ENV: Dict[SecurityProfile, Dict[str, str]] = {
     SecurityProfile.BALANCED: {
         "MVAR_FAIL_CLOSED": "1",
         "MVAR_ENFORCE_ED25519": "0",
+        "MVAR_REQUIRE_EXECUTION_CONTRACT": "0",
         "MVAR_HTTP_DEFAULT_DENY": "0",
         "MVAR_REQUIRE_EXECUTION_TOKEN": "1",
         "MVAR_EXECUTION_TOKEN_ONE_TIME": "1",
@@ -52,6 +54,7 @@ PROFILE_ENV: Dict[SecurityProfile, Dict[str, str]] = {
     SecurityProfile.MONITOR: {
         "MVAR_FAIL_CLOSED": "1",
         "MVAR_ENFORCE_ED25519": "0",
+        "MVAR_REQUIRE_EXECUTION_CONTRACT": "0",
         "MVAR_HTTP_DEFAULT_DENY": "0",
         "MVAR_REQUIRE_EXECUTION_TOKEN": "0",
         "MVAR_EXECUTION_TOKEN_ONE_TIME": "0",
