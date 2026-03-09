@@ -261,13 +261,13 @@ This README is intentionally front-loaded for fast evaluation. Detailed material
 
 - Run validation: `bash scripts/launch-gate.sh`
 - Submit adversarial vectors: [docs/ATTACK_VECTOR_SUBMISSIONS.md](docs/ATTACK_VECTOR_SUBMISSIONS.md)
-- Build adapters and integrations: [docs/BUILD_WITH_US.md](docs/BUILD_WITH_US.md)
+- Build adapters and integrations: [CONTRIBUTING.md](CONTRIBUTING.md)
 - Use the pinned 30-second proof post: [docs/outreach/GITHUB_PINNED_POST_30S_PROOF.md](docs/outreach/GITHUB_PINNED_POST_30S_PROOF.md)
 
 ## Contributing
 
 **MVAR is open source by design.** We welcome adapter integrations, security hardening, tests, and documentation improvements that preserve security invariants.
-See [docs/BUILD_WITH_US.md](docs/BUILD_WITH_US.md) for contribution lanes, requirements, conformance expectations, and security reporting workflow.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution lanes, requirements, conformance expectations, and security reporting workflow.
 
 ---
 
