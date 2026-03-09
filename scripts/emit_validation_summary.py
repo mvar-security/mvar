@@ -14,7 +14,7 @@ from pathlib import Path
 
 
 PATTERNS = {
-    "redteam_passed": re.compile(r"(\d+) passed in .*Red-team gate", re.DOTALL),
+    "redteam_passed": re.compile(r"(\d+)\s+passed in.*?Red-team gate", re.DOTALL | re.IGNORECASE),
     "attack_total": re.compile(r"Total Attack Vectors Tested:\s*(\d+)"),
     "attack_blocked": re.compile(r"Attacks Blocked:\s*(\d+)"),
     "attack_allowed": re.compile(r"Attacks Allowed:\s*(\d+)"),
@@ -36,6 +36,19 @@ def _git_rev(repo_root: Path) -> str:
     return subprocess.check_output(["git", "-C", str(repo_root), "rev-parse", "HEAD"], text=True).strip()
 
 
+def _is_proof_pack_ready(summary: dict[str, object]) -> bool:
+    return bool(
+        summary.get("all_systems_go")
+        and summary.get("attack_total") == 50
+        and summary.get("attack_blocked") == 50
+        and summary.get("attack_allowed") == 0
+        and isinstance(summary.get("full_suite_passed"), int)
+        and int(summary["full_suite_passed"]) > 0
+        and isinstance(summary.get("redteam_passed"), int)
+        and int(summary["redteam_passed"]) > 0
+    )
+
+
 def main() -> int:
     if len(sys.argv) != 3:
         print("usage: emit_validation_summary.py <launch_gate_log> <output_json>", file=sys.stderr)
@@ -47,7 +60,8 @@ def main() -> int:
 
     text = log_path.read_text(encoding="utf-8")
 
-    summary = {
+    summary: dict[str, object] = {
+        "schema_version": "proof_pack_summary.v1",
         "timestamp_utc": datetime.now(timezone.utc).isoformat(),
         "git_commit": _git_rev(repo_root),
         "python_version": platform.python_version(),
@@ -60,6 +74,7 @@ def main() -> int:
         "all_systems_go": "LAUNCH GATE: ALL SYSTEMS GO" in text,
         "source_log": os.fspath(log_path),
     }
+    summary["proof_pack_ready"] = _is_proof_pack_ready(summary)
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")

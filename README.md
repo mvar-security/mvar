@@ -178,6 +178,7 @@ What this proves:
 - Benign corpus has zero false blocks
 - Exact current numbers are published in [STATUS.md](STATUS.md)
 - Repro artifact pack is emitted under `artifacts/repro/<timestamp>/` with checksums and summary JSON
+- Repro pack command: `bash scripts/repro-validation-pack.sh` (updates `artifacts/repro/latest`)
 
 ## Execution Witness Chain
 
