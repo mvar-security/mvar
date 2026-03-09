@@ -60,10 +60,10 @@ Open source makes MVAR better. Structured governance keeps it secure.
 ### Get Started
 
 - **GitHub:** https://github.com/mvar-security/mvar
-- **Docs:** [README.md](../README.md)
-- **Adapter Contract:** [ADAPTER_SPEC.md](ADAPTER_SPEC.md)
-- **First-Party Wrappers:** [FIRST_PARTY_ADAPTERS.md](FIRST_PARTY_ADAPTERS.md)
-- **Security Policy:** [SECURITY.md](../SECURITY.md)
+- **Docs:** [README.md](README.md)
+- **Adapter Contract:** [ADAPTER_SPEC.md](docs/ADAPTER_SPEC.md)
+- **First-Party Wrappers:** [FIRST_PARTY_ADAPTERS.md](docs/FIRST_PARTY_ADAPTERS.md)
+- **Security Policy:** [SECURITY.md](SECURITY.md)
 
 ### Contact
 

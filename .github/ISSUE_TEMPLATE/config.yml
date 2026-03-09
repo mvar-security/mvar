@@ -4,7 +4,7 @@ contact_links:
     url: mailto:security@mvar.io
     about: Report vulnerabilities privately. Do not post exploit details in public issues.
   - name: Contribution guide
-    url: https://github.com/mvar-security/mvar/blob/main/docs/BUILD_WITH_US.md
+    url: https://github.com/mvar-security/mvar/blob/main/CONTRIBUTING.md
     about: Read contribution expectations and security invariants before opening issues/PRs.
   - name: Integration playbook
     url: https://github.com/mvar-security/mvar/blob/main/docs/AGENT_INTEGRATION_PLAYBOOK.md
