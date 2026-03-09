@@ -262,6 +262,8 @@ class SinkPolicy:
         self._expected_policy_hash = os.getenv("MVAR_EXPECTED_POLICY_HASH", "").strip()
         self.require_signed_policy_bundle = os.getenv("MVAR_REQUIRE_SIGNED_POLICY_BUNDLE", "0") == "1"
         self.enforce_ed25519 = os.getenv("MVAR_ENFORCE_ED25519", "0") == "1"
+        self.http_default_deny = os.getenv("MVAR_HTTP_DEFAULT_DENY", "0") == "1"
+        self.http_allowlist = self._parse_domain_allowlist(os.getenv("MVAR_HTTP_ALLOWLIST", ""))
         self.policy_bundle_path = os.getenv("MVAR_POLICY_BUNDLE_PATH", "").strip()
         self._policy_bundle_secret = os.getenv(
             "MVAR_POLICY_BUNDLE_SECRET",
@@ -373,6 +375,18 @@ class SinkPolicy:
             except Exception:
                 blobs.append(str(parameters))
         return [b[:self.max_blob_len] for b in blobs]
+
+    @staticmethod
+    def _parse_domain_allowlist(raw: str) -> List[str]:
+        return [domain.strip().lower() for domain in str(raw).split(",") if domain.strip()]
+
+    def _effective_http_allowlist(self, sink: SinkClassification) -> List[str]:
+        if self.http_allowlist:
+            return list(self.http_allowlist)
+        metadata_domains = sink.metadata.get("allowed_domains", [])
+        if not isinstance(metadata_domains, list):
+            return []
+        return [str(domain).strip().lower() for domain in metadata_domains if str(domain).strip()]
 
     def _contains_encoded_secret_payload(self, blobs: List[str]) -> bool:
         b64_re = re.compile(r"\b[A-Za-z0-9+/]{24,}={0,2}\b")
@@ -783,7 +797,9 @@ class SinkPolicy:
                 return "missing egress hostname"
             if hostname in {"localhost", "127.0.0.1"} or hostname.startswith("10.") or hostname.startswith("192.168."):
                 return f"private egress target denied: {hostname}"
-            allowed_domains = sink.metadata.get("allowed_domains", [])
+            allowed_domains = self._effective_http_allowlist(sink)
+            if self.http_default_deny and not allowed_domains:
+                return "http egress allowlist required (set MVAR_HTTP_ALLOWLIST)"
             if allowed_domains:
                 allowed = any(
                     hostname == domain or (domain.startswith("*.") and hostname.endswith(domain[1:]))
