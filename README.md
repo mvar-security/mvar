@@ -21,6 +21,7 @@ Invariant: `UNTRUSTED input + CRITICAL sink -> BLOCK`
 ## Try It In 30 Seconds
 
 [30-Second Proof](#30-second-proof) · [Quick Start](#quick-start) · [Governed MCP Proof](docs/outreach/GOVERNED_MCP_RUNTIME_PROOF.md) · [Adapters](docs/FIRST_PARTY_ADAPTERS.md)
+Canonical proof runbook: [RUN_THE_PROOF.md](RUN_THE_PROOF.md)
 
 [![Launch Gate](https://github.com/mvar-security/mvar/actions/workflows/launch-gate.yml/badge.svg)](https://github.com/mvar-security/mvar/actions/workflows/launch-gate.yml)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/mvar-security/mvar/badge)](https://scorecard.dev/viewer/?uri=github.com/mvar-security/mvar)
