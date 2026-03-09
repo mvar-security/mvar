@@ -1,12 +1,12 @@
 # PyPI Release Runbook
 
-This runbook documents trusted publishing for `mvar` and the tag-based publish flow.
+This runbook documents trusted publishing for `mvar-security` and the tag-based publish flow.
 
 ## Setup Trusted Publisher
 
 Configure a trusted publisher in PyPI with these exact fields:
 
-- PyPI project name: `mvar`
+- PyPI project name: `mvar-security`
 - GitHub repository: `mvar-security/mvar`
 - Workflow filename: `pypi-publish.yml`
 - Environment name: `pypi`
@@ -26,6 +26,6 @@ git push origin vX.X.X
 ## Post-publish verification
 
 ```bash
-pip install mvar==<version>
+pip install mvar-security==<version>
 python -c "from mvar import protect; print('install verified')"
 ```
