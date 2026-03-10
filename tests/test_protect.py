@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect
+import os
 from typing import Any, Dict
 
 import pytest
@@ -126,6 +127,7 @@ def _install_fake_runtime(
             )
 
     def _fake_create_default_runtime(profile: SecurityProfile, **kwargs: Any) -> tuple[object, object, object]:
+        captured.setdefault("profiles", []).append(profile)
         captured["profile"] = profile
         return object(), object(), object()
 
@@ -265,6 +267,48 @@ def test_protect_malformed_signal_is_ignored(monkeypatch: pytest.MonkeyPatch) ->
     wrapped = protect(tool, signal={"uncertainty_score": "not-a-number"}, profile="balanced")
     assert wrapped("id") == "id"
     assert captured["profile"] == SecurityProfile.BALANCED
+
+
+def test_protect_signal_tightening_does_not_leak_to_future_wrappers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured = _install_fake_runtime(monkeypatch, outcome="allow")
+
+    def tool(command: str) -> str:
+        return command
+
+    strict_wrapped = protect(tool, signal={"uncertainty_score": 0.95}, profile="permissive")
+    assert strict_wrapped("echo strict") == "echo strict"
+
+    default_wrapped = protect(tool)
+    assert default_wrapped("echo balanced") == "echo balanced"
+
+    assert captured["profiles"][-2:] == [SecurityProfile.STRICT, SecurityProfile.BALANCED]
+
+
+def test_protect_high_uncertainty_signal_preserves_profile_env_state() -> None:
+    profile_env_keys = [
+        "MVAR_FAIL_CLOSED",
+        "MVAR_ENFORCE_ED25519",
+        "MVAR_REQUIRE_EXECUTION_CONTRACT",
+        "MVAR_HTTP_DEFAULT_DENY",
+        "MVAR_REQUIRE_EXECUTION_TOKEN",
+        "MVAR_EXECUTION_TOKEN_ONE_TIME",
+        "MVAR_EXECUTION_TOKEN_NONCE_PERSIST",
+        "MVAR_ENABLE_COMPOSITION_RISK",
+        "MVAR_REQUIRE_DECLASSIFY_TOKEN",
+        "MVAR_DECLASSIFY_TOKEN_ONE_TIME",
+        "MVAR_REQUIRE_SIGNED_POLICY_BUNDLE",
+    ]
+    original = {key: os.environ.get(key) for key in profile_env_keys}
+
+    def tool(command: str) -> str:
+        return command
+
+    _ = protect(tool, signal={"uncertainty_score": 0.95}, profile="permissive")
+
+    after = {key: os.environ.get(key) for key in profile_env_keys}
+    assert after == original
 
 
 def test_protect_strict_profile(monkeypatch: pytest.MonkeyPatch) -> None:
