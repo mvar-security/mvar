@@ -39,9 +39,7 @@ import json
 import hashlib
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
-
-from .decision_ledger import MVARDecisionLedger
+from typing import Any, Dict, List, Optional, Tuple
 
 
 def _principal_id() -> str:
@@ -51,8 +49,11 @@ def _principal_id() -> str:
     )
 
 
-def _init_ledger_or_exit() -> MVARDecisionLedger:
+def _init_ledger_or_exit() -> Any:
     try:
+        # Lazy import avoids module side effects (QSEAL banner) for --help paths.
+        from .decision_ledger import MVARDecisionLedger
+
         return MVARDecisionLedger()
     except Exception as exc:
         print(f"❌ Unable to initialize decision ledger: {exc}")
@@ -446,18 +447,125 @@ def verify_witness_file(witness_path: str, *, require_chain: bool = False) -> Di
     }
 
 
+_VERIFY_WITNESS_HELP_TEXT = """Usage: mvar-verify-witness <ledger.jsonl> [options]
+
+Options:
+  --require-chain     Require valid signature chain
+  --qseal-key PATH    Verify using provided QSEAL key
+  --quiet             Minimal output
+  --json              JSON verification output
+  -h, --help          Show help"""
+
+
+def _print_verify_witness_help() -> None:
+    print(_VERIFY_WITNESS_HELP_TEXT)
+
+
+def _parse_verify_witness_args(argv: List[str]) -> Dict[str, Any]:
+    if not argv:
+        raise ValueError("missing_witness_path")
+
+    if len(argv) == 1 and argv[0] in ("-h", "--help"):
+        return {"help": True}
+
+    witness_path: Optional[str] = None
+    require_chain = False
+    quiet = False
+    json_out = False
+    qseal_key_path: Optional[str] = None
+
+    idx = 0
+    while idx < len(argv):
+        token = argv[idx]
+        if token in ("-h", "--help"):
+            raise ValueError("help_with_extra_args")
+        if token == "--require-chain":
+            require_chain = True
+        elif token == "--quiet":
+            quiet = True
+        elif token == "--json":
+            json_out = True
+        elif token == "--qseal-key":
+            idx += 1
+            if idx >= len(argv):
+                raise ValueError("missing_qseal_key_path")
+            qseal_key_path = argv[idx]
+        elif token.startswith("-"):
+            raise ValueError(f"unknown_option:{token}")
+        elif witness_path is None:
+            witness_path = token
+        else:
+            raise ValueError(f"unexpected_argument:{token}")
+        idx += 1
+
+    if witness_path is None:
+        raise ValueError("missing_witness_path")
+
+    return {
+        "help": False,
+        "witness_path": witness_path,
+        "require_chain": require_chain,
+        "quiet": quiet,
+        "json_out": json_out,
+        "qseal_key_path": qseal_key_path,
+    }
+
+
+def _apply_qseal_key_path(qseal_key_path: Optional[str]) -> Tuple[Optional[str], bool]:
+    """
+    Apply optional --qseal-key for HMAC verification mode by temporarily setting
+    QSEAL_SECRET from file contents.
+    """
+    if not qseal_key_path:
+        return None, False
+
+    key_path = Path(qseal_key_path)
+    try:
+        qseal_secret = key_path.read_text(encoding="utf-8").strip()
+    except OSError as exc:
+        raise ValueError(f"invalid_qseal_key_path:{qseal_key_path}") from exc
+
+    previous = os.environ.get("QSEAL_SECRET")
+    os.environ["QSEAL_SECRET"] = qseal_secret
+    return previous, True
+
+
 def main_verify_witness():
     """Entry point for 'mvar-verify-witness' binary."""
-    if len(sys.argv) < 2:
-        print("Usage: mvar-verify-witness <witness.json|witness.jsonl> [--require-chain]")
-        sys.exit(1)
+    try:
+        parsed = _parse_verify_witness_args(sys.argv[1:])
+    except ValueError:
+        _print_verify_witness_help()
+        sys.exit(2)
 
-    witness_path = sys.argv[1]
-    require_chain = "--require-chain" in sys.argv[2:]
-    report = verify_witness_file(witness_path, require_chain=require_chain)
-    print(json.dumps(report))
+    if parsed["help"]:
+        _print_verify_witness_help()
+        sys.exit(0)
 
-    ok = report["all_signatures_valid"] and (report["chain_valid"] or not require_chain)
+    previous_qseal_secret: Optional[str] = None
+    qseal_overridden = False
+    try:
+        try:
+            previous_qseal_secret, qseal_overridden = _apply_qseal_key_path(parsed["qseal_key_path"])
+        except ValueError:
+            _print_verify_witness_help()
+            sys.exit(2)
+
+        report = verify_witness_file(parsed["witness_path"], require_chain=parsed["require_chain"])
+    finally:
+        if qseal_overridden:
+            if previous_qseal_secret is None:
+                os.environ.pop("QSEAL_SECRET", None)
+            else:
+                os.environ["QSEAL_SECRET"] = previous_qseal_secret
+
+    ok = report["all_signatures_valid"] and (report["chain_valid"] or not parsed["require_chain"])
+
+    if parsed["json_out"]:
+        print(json.dumps(report))
+    elif not parsed["quiet"]:
+        print(f"witness verification {'PASS' if ok else 'FAIL'}")
+
     sys.exit(0 if ok else 1)
 
 

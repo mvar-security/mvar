@@ -199,9 +199,7 @@ def test_cli_exit_zero_for_valid_file(tmp_path, monkeypatch, capsys):
     assert exc.value.code == 0
 
     out = capsys.readouterr().out.strip()
-    report = json.loads(out)
-    assert report["all_signatures_valid"] is True
-    assert report["chain_valid"] is True
+    assert out == "witness verification PASS"
 
 
 def test_cli_exit_one_for_invalid_file(tmp_path, monkeypatch, capsys):
@@ -216,5 +214,75 @@ def test_cli_exit_one_for_invalid_file(tmp_path, monkeypatch, capsys):
     assert exc.value.code == 1
 
     out = capsys.readouterr().out.strip()
+    assert out == "witness verification FAIL"
+
+
+def test_cli_json_flag_outputs_structured_report(tmp_path, monkeypatch, capsys):
+    witness_path = _build_signed_witness_jsonl(tmp_path, monkeypatch, count=2)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["mvar-verify-witness", str(witness_path), "--require-chain", "--json"],
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        main_verify_witness()
+    assert exc.value.code == 0
+
+    out = capsys.readouterr().out.strip()
     report = json.loads(out)
-    assert report["all_signatures_valid"] is False
+    assert report["all_signatures_valid"] is True
+    assert report["chain_valid"] is True
+
+
+def test_cli_help_outputs_exact_text(monkeypatch, capsys):
+    monkeypatch.setattr(sys, "argv", ["mvar-verify-witness", "--help"])
+
+    with pytest.raises(SystemExit) as exc:
+        main_verify_witness()
+    assert exc.value.code == 0
+
+    out = capsys.readouterr().out.rstrip("\n")
+    assert out == (
+        "Usage: mvar-verify-witness <ledger.jsonl> [options]\n\n"
+        "Options:\n"
+        "  --require-chain     Require valid signature chain\n"
+        "  --qseal-key PATH    Verify using provided QSEAL key\n"
+        "  --quiet             Minimal output\n"
+        "  --json              JSON verification output\n"
+        "  -h, --help          Show help"
+    )
+
+
+def test_cli_invalid_args_exit_two(monkeypatch, capsys):
+    monkeypatch.setattr(sys, "argv", ["mvar-verify-witness"])
+
+    with pytest.raises(SystemExit) as exc:
+        main_verify_witness()
+    assert exc.value.code == 2
+
+    out = capsys.readouterr().out.rstrip("\n")
+    assert out.startswith("Usage: mvar-verify-witness <ledger.jsonl> [options]")
+
+
+def test_cli_qseal_key_path_is_applied(tmp_path, monkeypatch, capsys):
+    witness_path = _build_signed_witness_jsonl(tmp_path, monkeypatch, count=1)
+    key_path = tmp_path / "qseal.key"
+    key_path.write_text("unit-test-secret\n", encoding="utf-8")
+
+    # Ensure verifier uses --qseal-key and not pre-existing env from test helper.
+    monkeypatch.delenv("QSEAL_SECRET", raising=False)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["mvar-verify-witness", str(witness_path), "--qseal-key", str(key_path), "--json"],
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        main_verify_witness()
+    assert exc.value.code == 0
+
+    out = capsys.readouterr().out.strip()
+    report = json.loads(out)
+    assert report["all_signatures_valid"] is True
+    assert report["chain_valid"] is True
