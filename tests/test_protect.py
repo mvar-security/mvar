@@ -223,6 +223,50 @@ def test_protect_default_profile_is_balanced(monkeypatch: pytest.MonkeyPatch) ->
     assert captured["profile"] == SecurityProfile.BALANCED
 
 
+def test_protect_no_signal_preserves_default_behavior(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured = _install_fake_runtime(monkeypatch, outcome="allow")
+
+    def tool(command: str) -> str:
+        return command
+
+    wrapped = protect(tool, signal=None)
+    assert wrapped("echo hello") == "echo hello"
+    assert captured["profile"] == SecurityProfile.BALANCED
+
+
+def test_protect_high_uncertainty_signal_tightens_to_strict(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured = _install_fake_runtime(monkeypatch, outcome="allow")
+
+    def tool(command: str) -> str:
+        return command
+
+    wrapped = protect(tool, signal={"uncertainty_score": 0.91}, profile="permissive")
+    assert wrapped("whoami") == "whoami"
+    assert captured["profile"] == SecurityProfile.STRICT
+
+
+def test_protect_low_uncertainty_signal_does_not_change_profile(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured = _install_fake_runtime(monkeypatch, outcome="allow")
+
+    def tool(command: str) -> str:
+        return command
+
+    wrapped = protect(tool, signal={"uncertainty_score": 0.8}, profile="permissive")
+    assert wrapped("whoami") == "whoami"
+    assert captured["profile"] == SecurityProfile.MONITOR
+
+
+def test_protect_malformed_signal_is_ignored(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured = _install_fake_runtime(monkeypatch, outcome="allow")
+
+    def tool(command: str) -> str:
+        return command
+
+    wrapped = protect(tool, signal={"uncertainty_score": "not-a-number"}, profile="balanced")
+    assert wrapped("id") == "id"
+    assert captured["profile"] == SecurityProfile.BALANCED
+
+
 def test_protect_strict_profile(monkeypatch: pytest.MonkeyPatch) -> None:
     captured = _install_fake_runtime(monkeypatch, outcome="allow")
 

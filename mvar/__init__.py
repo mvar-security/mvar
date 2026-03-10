@@ -68,6 +68,16 @@ def _default_target_extractor(args: Tuple[Any, ...], kwargs: Dict[str, Any]) -> 
     return "unknown"
 
 
+def _should_tighten_from_signal(signal: Any) -> bool:
+    if not isinstance(signal, dict):
+        return False
+    raw_score = signal.get("uncertainty_score")
+    try:
+        return float(raw_score) > 0.8
+    except (TypeError, ValueError):
+        return False
+
+
 def _to_decision_record(decision: Any, profile: SecurityProfile) -> Dict[str, Any]:
     raw = decision.to_dict()
     return {
@@ -105,6 +115,7 @@ def _to_decision_record(decision: Any, profile: SecurityProfile) -> Dict[str, An
 
 def protect(
     tool_fn: Callable,
+    signal: Optional[Dict[str, Any]] = None,
     *,
     profile: str = "balanced",
     trusted: bool = False,
@@ -127,6 +138,8 @@ def protect(
         raise ValueError(f"Unsupported profile '{profile}'. Expected one of: {allowed}")
 
     mapped_profile = _PROFILE_MAP[profile_key]
+    if _should_tighten_from_signal(signal):
+        mapped_profile = SecurityProfile.STRICT
     graph, policy, _capability_runtime = create_default_runtime(profile=mapped_profile)
     adapter = MVARExecutionAdapter(policy, graph)
 
