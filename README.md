@@ -14,6 +14,17 @@ Most defenses attempt to filter malicious prompts. That fails once model output 
 
 **MVAR is the execution firewall for AI agents.**
 
+## Install
+
+```bash
+pip install mvar-security
+```
+
+```python
+from mvar import protect
+safe_tool = protect(my_tool)
+```
+
 Invariant: `UNTRUSTED input + CRITICAL sink -> BLOCK`
 
 `50 attack vectors blocked` · `200 benign vectors passed` · `CI-gated launch validation`
@@ -24,6 +35,7 @@ Invariant: `UNTRUSTED input + CRITICAL sink -> BLOCK`
 Canonical proof runbook: [RUN_THE_PROOF.md](RUN_THE_PROOF.md)
 
 [![Launch Gate](https://github.com/mvar-security/mvar/actions/workflows/launch-gate.yml/badge.svg)](https://github.com/mvar-security/mvar/actions/workflows/launch-gate.yml)
+[![PyPI version](https://badge.fury.io/py/mvar-security.svg)](https://badge.fury.io/py/mvar-security)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/mvar-security/mvar/badge)](https://scorecard.dev/viewer/?uri=github.com/mvar-security/mvar)
 [![Validation](https://img.shields.io/badge/Attack%20Vectors-50%20tested-brightgreen)](./)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE.md)
@@ -155,6 +167,8 @@ Spec links:
 - Execution contract model (one-page): [docs/architecture/execution_contract_model.md](docs/architecture/execution_contract_model.md)
 
 ## Verify in 60 Seconds
+
+Skeptical? [Run the proof yourself in under 2 minutes.](RUN_THE_PROOF.md)
 
 Fast path (works even if you forgot to activate the right venv):
 
