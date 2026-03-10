@@ -174,6 +174,7 @@ Spec links:
 - [`spec/decision_record/v1.schema.json`](spec/decision_record/v1.schema.json)
 - Execution contract model (one-page): [docs/architecture/execution_contract_model.md](docs/architecture/execution_contract_model.md)
 - Execution Boundary Specification: [docs/specs/EXECUTION_BOUNDARY_SPEC.md](docs/specs/EXECUTION_BOUNDARY_SPEC.md)
+Execution boundary rationale: [docs/WHY_EXECUTION_BOUNDARIES.md](docs/WHY_EXECUTION_BOUNDARIES.md)
 
 ## Verify in 60 Seconds
 
