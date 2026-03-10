@@ -156,7 +156,7 @@ What This Enables
 
 Once execution boundaries are a standard layer:
 
-Uncertainty quantification tools can feed advisory signals to the boundary — “this output has high uncertainty” — without taking on enforcement responsibility themselves. The boundary decides what to do with that signal.
+Upstream reliability tools can feed advisory signals to the boundary — "this output looks risky" — without taking on enforcement responsibility themselves. The boundary decides what to do with that signal.
 
 Agent frameworks can declare MVAR-compatible conformance, giving users a verifiable security property rather than a documentation promise.
 
