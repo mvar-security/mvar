@@ -6,13 +6,19 @@
 
 # MVAR — Deterministic Security for AI Agents
 
-**If your AI agent can run shell commands, call APIs, read files, or use credentials, prompt injection can escalate into real execution.**
+MVAR is the execution firewall for AI agents.
 
-Most defenses attempt to filter malicious prompts. That fails once model output reaches privileged tools.
+If your AI agent can execute shell commands, call APIs, read files, or
+access credentials, prompt injection can escalate into real system execution.
 
-**MVAR prevents this by enforcing deterministic policy between LLM output and execution sinks.** It works with modern agent runtimes, including MCP- and OpenClaw-style tool chains. See the governed runtime proof for a reproducible benign-pass / adversarial-block demo.
+Prompt injection is not a prompt problem — it's an execution problem.
 
-**MVAR is the execution firewall for AI agents.**
+Most defenses attempt to detect malicious prompts. That fails once model
+output reaches privileged tools.
+
+MVAR does not attempt to detect malicious prompts. It assumes prompt
+injection will occur and prevents untrusted model output from reaching
+privileged execution sinks.
 
 ## Install
 
@@ -25,7 +31,7 @@ from mvar import protect
 safe_tool = protect(my_tool)
 ```
 
-Invariant: `UNTRUSTED input + CRITICAL sink -> BLOCK`
+Invariant: UNTRUSTED input + CRITICAL sink → BLOCK
 
 `50 attack vectors blocked` · `200 benign vectors passed` · `CI-gated launch validation`
 
@@ -82,7 +88,8 @@ Profiles: `balanced` (default), `strict`, `permissive`.
 
 ## What MVAR Is
 
-MVAR is a deterministic execution security layer for LLM agents.
+MVAR (MIRRA Verified Agent Runtime) is a deterministic execution security
+layer for LLM agents.
 
 Most defenses attempt to detect malicious prompts. MVAR enforces policy at execution sinks, where prompt-injection attacks cause real system effects.
 
@@ -150,7 +157,8 @@ tool request
 MVAR enforcement layer
     |
     v
-shell / APIs / filesystem / secrets
+privileged execution sinks
+(shell / APIs / filesystem / credentials)
 ```
 
 ```mermaid
@@ -201,6 +209,16 @@ MVAR can verify signed witness artifacts offline, including signature validity a
 
 ```bash
 mvar-verify-witness data/mvar_decisions.jsonl --require-chain
+```
+
+Expected result:
+```json
+{
+  "total_records": 2,
+  "verified_records": 2,
+  "all_signatures_valid": true,
+  "chain_valid": true
+}
 ```
 
 ## Integration and Demos
