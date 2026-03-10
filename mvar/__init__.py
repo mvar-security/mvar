@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import os
 from functools import wraps
 from typing import Any, Callable, Dict, Optional, Tuple
 
 from mvar_adapters.base import MVARExecutionAdapter
 from mvar_core import __version__
-from mvar_core.profiles import SecurityProfile, create_default_runtime
+from mvar_core.profiles import PROFILE_ENV, SecurityProfile, create_default_runtime
 
 
 class ExecutionBlocked(RuntimeError):
@@ -31,6 +32,14 @@ _PROFILE_MAP = {
     "balanced": SecurityProfile.BALANCED,
     "permissive": SecurityProfile.MONITOR,
 }
+
+_PROFILE_ENV_KEYS = tuple(
+    {
+        key
+        for profile_values in PROFILE_ENV.values()
+        for key in profile_values.keys()
+    }
+)
 
 
 def _integrity_to_decision_value(raw_integrity: str) -> str:
@@ -66,6 +75,30 @@ def _default_target_extractor(args: Tuple[Any, ...], kwargs: Dict[str, Any]) -> 
     if "target" in kwargs:
         return str(kwargs["target"])
     return "unknown"
+
+
+def _should_tighten_from_signal(signal: Any) -> bool:
+    if not isinstance(signal, dict):
+        return False
+    raw_score = signal.get("uncertainty_score")
+    try:
+        return float(raw_score) > 0.8
+    except (TypeError, ValueError):
+        return False
+
+
+def _create_runtime(profile: SecurityProfile, *, preserve_profile_env: bool = False) -> Tuple[Any, Any, Any]:
+    if not preserve_profile_env:
+        return create_default_runtime(profile=profile)
+    previous_values = {key: os.environ.get(key) for key in _PROFILE_ENV_KEYS}
+    try:
+        return create_default_runtime(profile=profile)
+    finally:
+        for key, value in previous_values.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
 
 
 def _to_decision_record(decision: Any, profile: SecurityProfile) -> Dict[str, Any]:
@@ -105,6 +138,7 @@ def _to_decision_record(decision: Any, profile: SecurityProfile) -> Dict[str, An
 
 def protect(
     tool_fn: Callable,
+    signal: Optional[Dict[str, Any]] = None,
     *,
     profile: str = "balanced",
     trusted: bool = False,
@@ -127,7 +161,13 @@ def protect(
         raise ValueError(f"Unsupported profile '{profile}'. Expected one of: {allowed}")
 
     mapped_profile = _PROFILE_MAP[profile_key]
-    graph, policy, _capability_runtime = create_default_runtime(profile=mapped_profile)
+    tightened_by_signal = _should_tighten_from_signal(signal)
+    if tightened_by_signal:
+        mapped_profile = SecurityProfile.STRICT
+    graph, policy, _capability_runtime = _create_runtime(
+        mapped_profile,
+        preserve_profile_env=tightened_by_signal,
+    )
     adapter = MVARExecutionAdapter(policy, graph)
 
     resolved_tool_name = tool_name or getattr(tool_fn, "__name__", "tool")
