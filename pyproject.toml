@@ -1,3 +1,18 @@
 [build-system]
 requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
+
+[project]
+name = "mvar-security"
+version = "1.4.3"
+description = "MVAR: Information Flow Control for LLM Agent Runtimes"
+requires-python = ">=3.10"
+dynamic = [
+    "readme",
+    "license",
+    "authors",
+    "classifiers",
+    "dependencies",
+    "optional-dependencies",
+    "scripts",
+]

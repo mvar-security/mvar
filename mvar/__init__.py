@@ -9,6 +9,7 @@ from typing import Any, Callable, Dict, Optional, Tuple
 from mvar_adapters.base import MVARExecutionAdapter
 from mvar_core import __version__
 from mvar_core.profiles import PROFILE_ENV, SecurityProfile, create_default_runtime
+from mvar.governor import ExecutionDecision, ExecutionGovernor
 
 
 class ExecutionBlocked(RuntimeError):
@@ -215,4 +216,4 @@ def protect(
     return _wrapped
 
 
-__all__ = ["protect", "ExecutionBlocked", "StepUpRequired", "__version__"]
+__all__ = ["protect", "ExecutionBlocked", "StepUpRequired", "ExecutionGovernor", "ExecutionDecision", "__version__"]
