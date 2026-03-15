@@ -6,14 +6,28 @@ from pathlib import Path
 
 
 def _bootstrap_mvar_core_from_source() -> None:
-    if importlib.util.find_spec("mvar_core.capability") is not None:
-        return
-
     repo_root = Path(__file__).resolve().parents[1]
+    repo_root_str = str(repo_root)
+    if repo_root_str not in sys.path:
+        sys.path.insert(0, repo_root_str)
+
     source_pkg = repo_root / "mvar-core"
     init_py = source_pkg / "__init__.py"
     if not init_py.exists():
         return
+
+    try:
+        existing_spec = importlib.util.find_spec("mvar_core.capability")
+    except ModuleNotFoundError:
+        existing_spec = None
+
+    if existing_spec is not None and existing_spec.origin:
+        origin = Path(existing_spec.origin).resolve()
+        try:
+            origin.relative_to(source_pkg.resolve())
+            return
+        except ValueError:
+            pass
 
     spec = importlib.util.spec_from_file_location(
         "mvar_core",
