@@ -20,6 +20,23 @@ MVAR does not attempt to detect malicious prompts. It assumes prompt
 injection will occur and prevents untrusted model output from reaching
 privileged execution sinks.
 
+See ClawZero for a 60-second demo of MVAR protecting an OpenClaw agent:
+https://github.com/mvar-security/clawzero
+
+## See It Block an Attack in <60 Seconds
+
+```bash
+python3 -m venv clawzero_demo && source clawzero_demo/bin/activate
+pip install clawzero==0.1.2
+clawzero demo openclaw --mode compare --scenario shell
+```
+
+Result:
+- Standard OpenClaw -> COMPROMISED (RCE via `curl | bash`)
+- MVAR-protected -> BLOCKED ✓ (signed witness generated)
+
+![MVAR proof demo output](assets/demo.gif)
+
 ## Install
 
 ```bash
@@ -303,6 +320,18 @@ This README is intentionally front-loaded for fast evaluation. Detailed material
 
 **MVAR is open source by design.** We welcome adapter integrations, security hardening, tests, and documentation improvements that preserve security invariants.
 See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution lanes, requirements, conformance expectations, and security reporting workflow.
+
+## Early Release - Join Us
+
+This is early. The clawzero demo shows enforcement in harness + OpenClaw simulation.
+
+Real multi-turn agent testing is next.
+
+If you're running agents (LangChain, CrewAI, AutoGen, OpenClaw, etc.) and want to try it live:
+- DM @Shawndcohen on X
+- Open an issue with your setup/framework
+
+Happy to pair debug and share results.
 
 ---
 
