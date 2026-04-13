@@ -37,7 +37,7 @@ class ExecutionDecision:
     # "mvar-security"
 
     witness_signature: str
-    # "ed25519:<hex>"
+    # "ed25519:<hex>" | "hmac-sha256:<hex>"
 
     provenance: dict
     # full provenance dict
@@ -55,7 +55,7 @@ class ExecutionGovernor:
     """Maps ClawZero requests onto mvar-security control-plane decisions."""
 
     _PROFILE_MAP = {
-        "prod_locked": SecurityProfile.BALANCED,
+        "prod_locked": SecurityProfile.STRICT,
         "dev_strict": SecurityProfile.STRICT,
         "dev_balanced": SecurityProfile.BALANCED,
     }
@@ -73,6 +73,11 @@ class ExecutionGovernor:
         resolved_profile = policy_profile or profile
         self.profile_name = resolved_profile
         self.security_profile = self._PROFILE_MAP.get(resolved_profile, SecurityProfile.BALANCED)
+        os.environ["MVAR_RUNTIME_PROFILE"] = resolved_profile
+        if resolved_profile == "prod_locked":
+            os.environ["MVAR_ENFORCE_ED25519"] = "1"
+        else:
+            os.environ.setdefault("MVAR_ENFORCE_ED25519", "0")
         # ClawZero integration should not require pre-bundled policy artifacts to boot.
         os.environ["MVAR_REQUIRE_SIGNED_POLICY_BUNDLE"] = "0"
         os.environ["MVAR_POLICY_BUNDLE_PATH"] = ""
@@ -379,11 +384,7 @@ class ExecutionGovernor:
                 "verification_trace": evaluation_trace,
             }
         )
-        if seal.algorithm == "ed25519":
-            signature = f"ed25519:{seal.signature_hex}"
-        else:
-            digest = hashlib.sha256(str(payload).encode("utf-8")).hexdigest()
-            signature = f"ed25519:{digest}"
+        signature = f"{seal.algorithm}:{seal.signature_hex}"
 
         return ExecutionDecision(
             decision=decision,

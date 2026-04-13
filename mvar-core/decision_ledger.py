@@ -27,47 +27,32 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import hmac
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 
-# Deterministic local HMAC fallback for stable cross-env behavior.
-verify_entry = None
-_external_sign_entry = None
+try:
+    from .qseal import QSealSigner
+except ImportError:
+    from qseal import QSealSigner
 
 QSEAL_AVAILABLE = True
-QSEAL_MODE = "hmac-sha256"
-
-if QSEAL_MODE == "hmac-sha256":
-    print(
-        "ℹ️  QSEAL external signer not detected — decision ledger uses HMAC-SHA256 fallback "
-        "(runtime policy traces may still show local Ed25519 signer)"
-    )
+_LOGGER = logging.getLogger("mvar.decision_ledger")
 
 
 def generate_signature(payload: dict) -> str:
-    """Deterministic HMAC-SHA256 signature for fallback mode."""
+    """
+    Legacy deterministic HMAC-SHA256 signature helper.
+
+    This exists for backward compatibility with historical tests and
+    artifacts that used QSEAL_SECRET-based HMAC signatures directly.
+    """
     secret = os.getenv("QSEAL_SECRET", "").encode("utf-8")
     payload_json = json.dumps(payload, sort_keys=True, separators=(",", ":"))
     return hmac.new(secret, payload_json.encode("utf-8"), hashlib.sha256).hexdigest()
-
-
-def sign_entry(entry: dict, agent_id: str = "mvar_decision_ledger") -> dict:
-    """
-    Sign entry with external Ed25519 path when available, otherwise local HMAC.
-    """
-    if QSEAL_MODE == "ed25519" and _external_sign_entry is not None:
-        return _external_sign_entry(entry, agent_id=agent_id)
-
-    signed = entry.copy()
-    signed["qseal_signature"] = generate_signature(entry)
-    signed["qseal_verified"] = True
-    signed["qseal_meta_hash"] = generate_signature(
-        {"agent_id": agent_id, "meta_hash": signed.get("meta_hash", "")}
-    )
-    return signed
 
 
 class MVARDecisionLedger:
@@ -117,7 +102,7 @@ class MVARDecisionLedger:
 
         Args:
             ledger_path: Path to JSONL ledger file
-            enable_qseal_signing: Enable cryptographic signatures (requires QSEAL_SECRET)
+            enable_qseal_signing: Enable cryptographic signatures via QSealSigner
         """
         self.ledger_path = Path(ledger_path)
         self.ledger_path.parent.mkdir(parents=True, exist_ok=True)
@@ -129,15 +114,32 @@ class MVARDecisionLedger:
         # QSEAL signing (separate from enable_ledger flag)
         # QSEAL_AVAILABLE is True for both optional external engine and local fallback signer.
         self.enable_qseal_signing = enable_qseal_signing and QSEAL_AVAILABLE
-        self.qseal_mode = QSEAL_MODE if self.enable_qseal_signing else "none"
+        self.qseal_mode = "none"
         self.max_future_skew_seconds = int(os.getenv("MVAR_MAX_FUTURE_SKEW_SECONDS", "300"))
         self.debug_ledger = os.getenv("MVAR_DEBUG_LEDGER") == "1"
         self.max_ledger_bytes = int(os.getenv("MVAR_LEDGER_MAX_BYTES", str(10 * 1024 * 1024)))
         self.max_appends_per_minute = int(os.getenv("MVAR_LEDGER_MAX_APPENDS_PER_MINUTE", "600"))
         self._append_times: List[datetime] = []
-
-        if self.enable_qseal_signing and self.qseal_mode == "hmac-sha256" and not os.getenv("QSEAL_SECRET"):
-            raise ValueError("QSEAL_SECRET is required for HMAC signing mode")
+        self._qseal_signer: Optional[QSealSigner] = QSealSigner() if self.enable_qseal_signing else None
+        self.qseal_mode = (
+            str(self._qseal_signer.algorithm).lower()
+            if self._qseal_signer is not None
+            else "none"
+        )
+        self._runtime_profile = str(os.getenv("MVAR_RUNTIME_PROFILE", "")).strip().lower()
+        self._require_ed25519 = (
+            os.getenv("MVAR_LEDGER_REQUIRE_ED25519", "0") == "1"
+            or self._runtime_profile == "prod_locked"
+        )
+        if self.enable_qseal_signing and self._require_ed25519 and self.qseal_mode != "ed25519":
+            raise RuntimeError(
+                "Ed25519 signing is required for this runtime profile; "
+                "ledger initialization failed closed."
+            )
+        if self.enable_qseal_signing and self.qseal_mode == "hmac-sha256":
+            _LOGGER.warning(
+                "Decision ledger using HMAC fallback; signatures are labeled hmac-sha256."
+            )
 
         # Cache for loaded scrolls (avoid repeated file I/O)
         self._scroll_cache: Optional[List[Dict]] = None
@@ -199,6 +201,56 @@ class MVARDecisionLedger:
         return hashlib.sha256(canonical_json.encode("utf-8")).hexdigest()
 
     @staticmethod
+    def _canonical_signature(algorithm: str, signature_hex: str) -> str:
+        return f"{algorithm}:{signature_hex}"
+
+    @staticmethod
+    def _split_signature(signature_value: str, claimed_algorithm: str) -> tuple[str, str]:
+        raw = str(signature_value or "").strip()
+        if ":" in raw:
+            algorithm, signature_hex = raw.split(":", 1)
+            return algorithm.strip().lower(), signature_hex.strip()
+        return claimed_algorithm, raw
+
+    @staticmethod
+    def _signed_payload(scroll: dict) -> bytes:
+        signed_portion = {
+            k: v
+            for k, v in scroll.items()
+            if k
+            not in ("qseal_signature", "qseal_verified", "qseal_meta_hash", "qseal_algorithm")
+        }
+        return json.dumps(signed_portion, sort_keys=True, separators=(",", ":")).encode("utf-8")
+
+    def _sign_payload(self, payload: bytes) -> tuple[str, str, bool]:
+        if not self.enable_qseal_signing or self._qseal_signer is None:
+            return "none", "UNSIGNED", False
+
+        algorithm = str(self._qseal_signer.algorithm).lower()
+        if algorithm == "ed25519":
+            private_key = getattr(self._qseal_signer, "_private_key", None)
+            public_key = getattr(self._qseal_signer, "_public_key", None)
+            if private_key is None or public_key is None:
+                raise RuntimeError("Ed25519 signer unavailable")
+            signature_hex = private_key.sign(payload).hex()
+            verified = False
+            try:
+                public_key.verify(bytes.fromhex(signature_hex), payload)
+                verified = True
+            except Exception:
+                verified = False
+            return algorithm, signature_hex, verified
+
+        if algorithm == "hmac-sha256":
+            hmac_key = getattr(self._qseal_signer, "_hmac_key", None)
+            if hmac_key is None:
+                raise RuntimeError("HMAC fallback key unavailable")
+            signature_hex = hmac.new(hmac_key, payload, hashlib.sha256).hexdigest()
+            return algorithm, signature_hex, True
+
+        raise RuntimeError(f"Unsupported signing algorithm: {algorithm}")
+
+    @staticmethod
     def _generate_nonce() -> str:
         return os.urandom(16).hex()
 
@@ -227,11 +279,29 @@ class MVARDecisionLedger:
 
         # Compute meta_hash before signing
         scroll["meta_hash"] = self._compute_meta_hash(scroll)
+        payload = self._signed_payload(scroll)
+        algorithm, signature_hex, verified = self._sign_payload(payload)
+        scroll["qseal_algorithm"] = algorithm
+        scroll["qseal_signature"] = self._canonical_signature(algorithm, signature_hex)
+        scroll["qseal_verified"] = bool(verified)
 
-        # Sign using QSEAL engine
-        signed = sign_entry(scroll, agent_id="mvar_decision_ledger")
-        signed["qseal_algorithm"] = self.qseal_mode
-        return signed
+        meta_payload = {"agent_id": "mvar_decision_ledger", "meta_hash": scroll.get("meta_hash", "")}
+        meta_payload_json = json.dumps(meta_payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        if algorithm == "ed25519":
+            private_key = getattr(self._qseal_signer, "_private_key", None)
+            if private_key is None:
+                raise RuntimeError("Ed25519 signer unavailable for meta hash seal")
+            meta_sig_hex = private_key.sign(meta_payload_json).hex()
+            scroll["qseal_meta_hash"] = self._canonical_signature("ed25519", meta_sig_hex)
+        elif algorithm == "hmac-sha256":
+            hmac_key = getattr(self._qseal_signer, "_hmac_key", None)
+            if hmac_key is None:
+                raise RuntimeError("HMAC fallback key unavailable for meta hash seal")
+            meta_sig_hex = hmac.new(hmac_key, meta_payload_json, hashlib.sha256).hexdigest()
+            scroll["qseal_meta_hash"] = self._canonical_signature("hmac-sha256", meta_sig_hex)
+        else:
+            scroll["qseal_meta_hash"] = "none:UNSIGNED"
+        return scroll
 
     def _verify_scroll(self, scroll: dict) -> bool:
         """
@@ -250,8 +320,8 @@ class MVARDecisionLedger:
             return False  # Unsigned scrolls not trusted
 
         try:
-            claimed_algorithm = (scroll.get("qseal_algorithm") or "").lower()
-            if claimed_algorithm != self.qseal_mode:
+            claimed_algorithm = str(scroll.get("qseal_algorithm", "")).strip().lower()
+            if claimed_algorithm not in {"ed25519", "hmac-sha256"}:
                 return False
 
             timestamp = scroll.get("timestamp")
@@ -270,20 +340,42 @@ class MVARDecisionLedger:
             if "qseal_signature" not in scroll:
                 return False
 
-            if claimed_algorithm == "ed25519":
-                if verify_entry is None:
-                    return False
-                return bool(verify_entry(scroll))
-
-            if claimed_algorithm != "hmac-sha256":
+            payload = self._signed_payload(scroll)
+            signature_label = str(scroll.get("qseal_signature", ""))
+            signature_algorithm, signature_hex = self._split_signature(
+                signature_label, claimed_algorithm
+            )
+            if signature_algorithm != claimed_algorithm or not signature_hex:
                 return False
 
-            provided_sig = scroll["qseal_signature"]
-            verify_payload = {k: v for k, v in scroll.items()
-                             if k not in ("qseal_signature", "qseal_verified",
-                                         "qseal_meta_hash", "qseal_algorithm")}
-            expected_sig = generate_signature(verify_payload)
-            return hmac.compare_digest(provided_sig, expected_sig)
+            if claimed_algorithm == "ed25519":
+                if self._qseal_signer is None:
+                    return False
+                public_key = getattr(self._qseal_signer, "_public_key", None)
+                if public_key is None:
+                    return False
+                try:
+                    public_key.verify(bytes.fromhex(signature_hex), payload)
+                    return True
+                except Exception:
+                    return False
+
+            # HMAC transition mode:
+            # 1) verify against current QSealSigner fallback key when available
+            # 2) fallback to legacy QSEAL_SECRET-based verification for historical rows
+            if self._qseal_signer is not None:
+                hmac_key = getattr(self._qseal_signer, "_hmac_key", None)
+                if hmac_key is not None:
+                    expected = hmac.new(hmac_key, payload, hashlib.sha256).hexdigest()
+                    if hmac.compare_digest(signature_hex, expected):
+                        return True
+
+            legacy_secret = os.getenv("QSEAL_SECRET", "").encode("utf-8")
+            if legacy_secret:
+                expected = hmac.new(legacy_secret, payload, hashlib.sha256).hexdigest()
+                if hmac.compare_digest(signature_hex, expected):
+                    return True
+            return False
         except Exception as e:
             if self.debug_ledger:
                 print(f"⚠️  Signature verification failed: {e}")
