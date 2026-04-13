@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -20,6 +21,10 @@ from mvar_core.provenance import (
 )
 from mvar_core.qseal import QSealSigner
 from mvar_core.sink_policy import PolicyOutcome
+from mvar_core.credential_vault import CredentialVaultClient
+
+
+_LOGGER = logging.getLogger("mvar.governor")
 
 
 @dataclass
@@ -49,6 +54,9 @@ class ExecutionDecision:
     enforcement_action: Optional[str] = None
     # used when decision is "annotate"
     # e.g. "block_until_approved"
+
+    vault_token_reference: Optional[dict[str, Any]] = None
+    # for credentials.access mediation; never contains raw credential material
 
 
 class ExecutionGovernor:
@@ -94,6 +102,11 @@ class ExecutionGovernor:
             execute_on_step_up=False,
         )
         self._qseal = QSealSigner()
+        self._vault_socket_path = str(
+            os.getenv("MVAR_VAULT_SOCKET_PATH", "/tmp/mvar_credential_vault.sock")
+        )
+        self._vault_default_ttl = int(os.getenv("MVAR_VAULT_TOKEN_TTL_SECONDS", "300"))
+        self._vault_single_use = os.getenv("MVAR_VAULT_TOKEN_SINGLE_USE", "1") == "1"
 
     def evaluate(self, request: dict[str, Any]) -> ExecutionDecision:
         req = dict(request or {})
@@ -205,6 +218,25 @@ class ExecutionGovernor:
             enforcement_action = None
             final_outcome = "ALLOW"
 
+        vault_token_reference: Optional[dict[str, Any]] = None
+        vault_trace: list[str] = []
+        if sink_type == "credentials.access":
+            (
+                decision,
+                reason_code,
+                enforcement_action,
+                final_outcome,
+                vault_token_reference,
+                vault_trace,
+            ) = self._mediate_credentials_access(
+                request=req,
+                base_decision=decision,
+                base_reason_code=reason_code,
+                integrity_level=integrity_level,
+                provenance=provenance,
+                policy_hash=str(getattr(auth, "policy_hash", "")),
+            )
+
         evaluation_trace = [
             f"input_integrity={integrity_level}",
             f"sink_classification={sink_classification}",
@@ -214,6 +246,7 @@ class ExecutionGovernor:
         raw_trace = getattr(auth, "evaluation_trace", None)
         if isinstance(raw_trace, list):
             evaluation_trace.extend([str(item) for item in raw_trace])
+        evaluation_trace.extend(vault_trace)
 
         return self._build_decision(
             decision=decision,
@@ -223,10 +256,195 @@ class ExecutionGovernor:
             integrity_level=integrity_level,
             evaluation_trace=evaluation_trace,
             enforcement_action=enforcement_action,
+            vault_token_reference=vault_token_reference,
         )
 
     def get_version(self) -> str:
         return __version__
+
+    @staticmethod
+    def _provenance_node_hash(provenance: dict[str, Any]) -> str:
+        node_id = str(provenance.get("node_id", ""))
+        if not node_id:
+            return ""
+        return hashlib.sha256(node_id.encode("utf-8")).hexdigest()
+
+    def _build_fallback_vault_reference(
+        self,
+        *,
+        credential_id: str,
+        scope: str,
+        ttl_seconds: int,
+        single_use: bool,
+        session_id: str,
+        provenance_node_hash: str,
+        policy_hash: str,
+        reason: str,
+    ) -> dict[str, Any]:
+        payload = {
+            "token_id": f"fallback_{hashlib.sha256(os.urandom(16)).hexdigest()[:16]}",
+            "mode": "fallback_no_vault",
+            "credential_id": credential_id,
+            "scope": scope,
+            "ttl_seconds": int(ttl_seconds),
+            "single_use": bool(single_use),
+            "session_binding": session_id,
+            "provenance_node_hash": provenance_node_hash,
+            "policy_hash": policy_hash,
+            "issued_at": datetime.now(timezone.utc).isoformat(),
+            "reason": reason,
+        }
+        canonical = str(payload).encode("utf-8")
+        seal = self._qseal.seal_result(
+            {
+                "proposal_digest": hashlib.sha256(canonical).hexdigest(),
+                "confidence": 1.0,
+                "trust_level": "medium",
+                "blocked": False,
+                "engine_used": "mvar-security",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "mode": self.profile_name,
+                "verification_trace": ["vault_fallback_reference"],
+            }
+        )
+        payload["qseal_signature"] = f"{seal.algorithm}:{seal.signature_hex}"
+        return payload
+
+    def _mediate_credentials_access(
+        self,
+        *,
+        request: dict[str, Any],
+        base_decision: str,
+        base_reason_code: str,
+        integrity_level: str,
+        provenance: dict[str, Any],
+        policy_hash: str,
+    ) -> tuple[str, str, Optional[str], str, Optional[dict[str, Any]], list[str]]:
+        """Route credentials.access through vault mediation; never return raw credential values."""
+        if base_decision != "allow":
+            return (
+                base_decision,
+                base_reason_code,
+                "block_until_approved" if base_decision == "annotate" else None,
+                "STEP_UP" if base_decision == "annotate" else "BLOCK",
+                None,
+                ["vault_mediation_skipped_non_allow_outcome"],
+            )
+
+        arguments = request.get("arguments", {}) if isinstance(request.get("arguments"), dict) else {}
+        credential_id = str(arguments.get("credential_id") or request.get("target") or "").strip()
+        if not credential_id:
+            return (
+                "block",
+                "VAULT_CREDENTIAL_ID_REQUIRED",
+                None,
+                "BLOCK",
+                None,
+                ["vault_mediation_failed_missing_credential_id"],
+            )
+
+        scope = str(arguments.get("scope", "read")).strip().lower() or "read"
+        ttl_seconds = int(arguments.get("ttl_seconds", self._vault_default_ttl))
+        single_use = bool(arguments.get("single_use", self._vault_single_use))
+        session_id = str(arguments.get("session_id") or request.get("session_id") or "").strip()
+        provenance_node_hash = self._provenance_node_hash(provenance)
+        integrity_norm = "trusted" if integrity_level.strip().lower() == "trusted" else "untrusted"
+        sink_risk = "critical"
+
+        verification_context = {
+            "credential_id": credential_id,
+            "scope": scope,
+            "ttl_seconds": ttl_seconds,
+            "single_use": single_use,
+            "session_id": session_id,
+            "provenance_node_hash": provenance_node_hash,
+            "policy_hash": policy_hash,
+            "integrity_at_issue": integrity_norm,
+            "sink_risk": sink_risk,
+        }
+
+        strict_override = bool(arguments.get("vault_fallback_override", False))
+
+        def _fallback(reason_code: str) -> tuple[str, str, Optional[str], str, Optional[dict[str, Any]], list[str]]:
+            if self.profile_name == "prod_locked":
+                return ("block", "VAULT_UNAVAILABLE_FAIL_CLOSED", None, "BLOCK", None, [f"vault_unavailable:{reason_code}"])
+            if self.profile_name == "dev_strict" and not strict_override:
+                return (
+                    "block",
+                    "VAULT_OVERRIDE_REQUIRED",
+                    None,
+                    "BLOCK",
+                    None,
+                    [f"vault_unavailable:{reason_code}", "vault_fallback_override_required"],
+                )
+            fallback_reason = "VAULT_FALLBACK_ALLOWED" if self.profile_name == "dev_balanced" else "VAULT_FALLBACK_OVERRIDE"
+            _LOGGER.warning(
+                "Vault unavailable for credentials.access; using fallback reference | profile=%s reason=%s",
+                self.profile_name,
+                reason_code,
+            )
+            ref = self._build_fallback_vault_reference(
+                credential_id=credential_id,
+                scope=scope,
+                ttl_seconds=ttl_seconds,
+                single_use=single_use,
+                session_id=session_id,
+                provenance_node_hash=provenance_node_hash,
+                policy_hash=policy_hash,
+                reason=reason_code,
+            )
+            return ("allow", fallback_reason, None, "ALLOW", ref, [f"vault_fallback:{reason_code}"])
+
+        try:
+            client = CredentialVaultClient(socket_path=self._vault_socket_path)
+            supplied_token_id = str(arguments.get("vault_token_id") or arguments.get("token_id") or "").strip()
+            if supplied_token_id:
+                validation = client.validate_token_use(
+                    supplied_token_id,
+                    sink_risk=sink_risk,
+                    request_integrity=integrity_norm,
+                    provenance_node_hash=provenance_node_hash,
+                    policy_hash=policy_hash,
+                    session_id=session_id,
+                )
+                if not validation.get("success") or not validation.get("valid"):
+                    return (
+                        "block",
+                        "VAULT_TOKEN_INVALID",
+                        None,
+                        "BLOCK",
+                        None,
+                        [f"vault_token_validation_failed:{validation.get('error', 'unknown')}"],
+                    )
+                return (
+                    "allow",
+                    "VAULT_TOKEN_VALIDATED",
+                    None,
+                    "ALLOW",
+                    {"token_id": supplied_token_id, "mode": "validated_reference"},
+                    ["vault_token_validated_use_time"],
+                )
+
+            token = client.issue_token(
+                credential_id=credential_id,
+                credential_type=str(arguments.get("credential_type", "api_key")),
+                scope=scope,
+                ttl_seconds=ttl_seconds,
+                single_use=single_use,
+                verification_context=verification_context,
+            )
+            if token is None:
+                return _fallback("token_issue_failed")
+            return (
+                "allow",
+                "VAULT_TOKEN_ISSUED",
+                None,
+                "ALLOW",
+                token.to_reference_dict(),
+                ["vault_token_issued"],
+            )
+        except Exception as exc:  # pragma: no cover - exercised in integration behavior
+            return _fallback(f"vault_unreachable:{exc}")
 
     def _register_default_capabilities(self, capability_runtime: CapabilityRuntime) -> None:
         capability_runtime.register_tool(
@@ -359,6 +577,7 @@ class ExecutionGovernor:
         integrity_level: str,
         evaluation_trace: list[str],
         enforcement_action: Optional[str],
+        vault_token_reference: Optional[dict[str, Any]] = None,
     ) -> ExecutionDecision:
         payload = {
             "decision": decision,
@@ -370,6 +589,7 @@ class ExecutionGovernor:
             "integrity_level": integrity_level,
             "evaluation_trace": evaluation_trace,
             "enforcement_action": enforcement_action,
+            "vault_token_reference": vault_token_reference,
         }
         canonical = str(payload).encode("utf-8")
         seal = self._qseal.seal_result(
@@ -395,4 +615,5 @@ class ExecutionGovernor:
             provenance=provenance,
             evaluation_trace=evaluation_trace,
             enforcement_action=enforcement_action,
+            vault_token_reference=vault_token_reference,
         )
