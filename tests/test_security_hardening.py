@@ -6,9 +6,11 @@ import json
 import os
 from pathlib import Path
 
+import pytest
 import test_common  # noqa: F401
+import qseal
 from capability import CapabilityRuntime, CapabilityGrant, CapabilityType, build_shell_tool
-from decision_ledger import MVARDecisionLedger
+from decision_ledger import MVARDecisionLedger, generate_signature
 from provenance import ProvenanceGraph, provenance_user_input
 from sink_policy import SinkPolicy, register_common_sinks, PolicyOutcome
 
@@ -40,7 +42,8 @@ def test_ledger_fails_closed_on_algorithm_mismatch():
     assert decisions == []
 
 
-def test_sink_policy_blocks_shell_metacharacters():
+def test_sink_policy_blocks_shell_metacharacters(monkeypatch):
+    monkeypatch.setenv("MVAR_REQUIRE_SIGNED_POLICY_BUNDLE", "0")
     graph = ProvenanceGraph(enable_qseal=False)
     runtime = CapabilityRuntime()
     runtime.manifests["bash"] = build_shell_tool("bash", ["pytest", "ls"], ["/tmp/**"])
@@ -59,7 +62,8 @@ def test_sink_policy_blocks_shell_metacharacters():
     assert "Strict boundary denied target" in decision.reason
 
 
-def test_sink_policy_blocks_python_exec_by_default():
+def test_sink_policy_blocks_python_exec_by_default(monkeypatch):
+    monkeypatch.setenv("MVAR_REQUIRE_SIGNED_POLICY_BUNDLE", "0")
     graph = ProvenanceGraph(enable_qseal=False)
     runtime = CapabilityRuntime()
     runtime.manifests["bash"] = build_shell_tool("bash", ["python3", "ls"], ["/tmp/**"])
@@ -79,18 +83,108 @@ def test_sink_policy_blocks_python_exec_by_default():
     assert "allowlist" in decision.reason.lower()
 
 
-def test_ledger_requires_qseal_secret_in_hmac_mode():
+def test_ledger_initializes_without_qseal_secret():
     old_secret = os.environ.pop("QSEAL_SECRET", None)
     try:
-        raised = False
-        try:
-            MVARDecisionLedger(ledger_path="/tmp/mvar_hardening_no_secret.jsonl", enable_qseal_signing=True)
-        except ValueError:
-            raised = True
-        assert raised
+        ledger = MVARDecisionLedger(
+            ledger_path="/tmp/mvar_hardening_no_secret.jsonl",
+            enable_qseal_signing=True,
+        )
+        assert ledger.qseal_mode in {"ed25519", "hmac-sha256"}
     finally:
         if old_secret is not None:
             os.environ["QSEAL_SECRET"] = old_secret
+
+
+def test_ledger_prod_locked_fails_closed_without_ed25519(monkeypatch, tmp_path):
+    monkeypatch.setattr(qseal, "_CRYPTO_AVAILABLE", False)
+    monkeypatch.setenv("MVAR_RUNTIME_PROFILE", "prod_locked")
+    monkeypatch.delenv("MVAR_LEDGER_REQUIRE_ED25519", raising=False)
+
+    with pytest.raises(RuntimeError, match="Ed25519 signing is required"):
+        MVARDecisionLedger(
+            ledger_path=str(tmp_path / "prod_locked_no_ed25519.jsonl"),
+            enable_qseal_signing=True,
+        )
+
+
+def test_ledger_prod_locked_writes_ed25519_labels(monkeypatch, tmp_path):
+    if not qseal._CRYPTO_AVAILABLE:  # pragma: no cover - environment dependent
+        pytest.skip("Ed25519 unavailable in this environment")
+
+    monkeypatch.setenv("MVAR_RUNTIME_PROFILE", "prod_locked")
+    monkeypatch.delenv("MVAR_LEDGER_REQUIRE_ED25519", raising=False)
+
+    ledger = MVARDecisionLedger(
+        ledger_path=str(tmp_path / "prod_locked_ed25519.jsonl"),
+        enable_qseal_signing=True,
+    )
+    scroll_id = ledger.record_decision(
+        outcome="BLOCK",
+        sink=type("Sink", (), {"tool": "bash", "action": "exec"})(),
+        target="curl bad.example",
+        provenance_node_id="node_ed25519",
+        evaluation_trace=["contract:test"],
+        reason="contract",
+        policy_hash="contract_hash",
+    )
+    decision = ledger.get_decision(scroll_id)
+    assert decision is not None
+    assert decision["qseal_algorithm"] == "ed25519"
+    assert str(decision["qseal_signature"]).startswith("ed25519:")
+
+
+def test_ledger_dev_fallback_uses_truthful_hmac_label(monkeypatch, tmp_path):
+    monkeypatch.setattr(qseal, "_CRYPTO_AVAILABLE", False)
+    monkeypatch.setenv("MVAR_RUNTIME_PROFILE", "dev_balanced")
+    monkeypatch.delenv("MVAR_LEDGER_REQUIRE_ED25519", raising=False)
+
+    ledger = MVARDecisionLedger(
+        ledger_path=str(tmp_path / "dev_hmac_fallback.jsonl"),
+        enable_qseal_signing=True,
+    )
+    scroll_id = ledger.record_decision(
+        outcome="BLOCK",
+        sink=type("Sink", (), {"tool": "bash", "action": "exec"})(),
+        target="curl bad.example",
+        provenance_node_id="node_hmac",
+        evaluation_trace=["contract:test"],
+        reason="contract",
+        policy_hash="contract_hash",
+    )
+    decision = ledger.get_decision(scroll_id)
+    assert decision is not None
+    assert decision["qseal_algorithm"] == "hmac-sha256"
+    assert str(decision["qseal_signature"]).startswith("hmac-sha256:")
+
+
+def test_ledger_reads_legacy_hmac_signature_with_qseal_secret(monkeypatch, tmp_path):
+    monkeypatch.setenv("QSEAL_SECRET", "legacy_contract_secret")
+    ledger = MVARDecisionLedger(
+        ledger_path=str(tmp_path / "legacy_hmac_read.jsonl"),
+        enable_qseal_signing=True,
+    )
+    scroll_id = ledger.record_decision(
+        outcome="BLOCK",
+        sink=type("Sink", (), {"tool": "bash", "action": "exec"})(),
+        target="curl bad.example",
+        provenance_node_id="node_legacy",
+        evaluation_trace=["contract:test"],
+        reason="contract",
+        policy_hash="contract_hash",
+    )
+    decision = ledger.get_decision(scroll_id)
+    assert decision is not None
+
+    legacy_scroll = dict(decision)
+    legacy_scroll["qseal_algorithm"] = "hmac-sha256"
+    payload = {
+        k: v
+        for k, v in legacy_scroll.items()
+        if k not in ("qseal_signature", "qseal_verified", "qseal_meta_hash", "qseal_algorithm")
+    }
+    legacy_scroll["qseal_signature"] = generate_signature(payload)
+    assert ledger._verify_scroll(legacy_scroll) is True  # noqa: SLF001
 
 
 def _snapshot_http_env():

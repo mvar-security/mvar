@@ -12,7 +12,6 @@ Commands:
 
 Usage:
     export MVAR_ENABLE_LEDGER=1
-    export QSEAL_SECRET=$(openssl rand -hex 32)
 
     # Run agent, generate some BLOCK decisions
     # ...
@@ -57,7 +56,7 @@ def _init_ledger_or_exit() -> Any:
         return MVARDecisionLedger()
     except Exception as exc:
         print(f"❌ Unable to initialize decision ledger: {exc}")
-        print("Tip: set QSEAL_SECRET when MVAR_ENABLE_LEDGER=1")
+        print("Tip: ensure Ed25519 is available; for legacy HMAC verification, set QSEAL_SECRET")
         raise SystemExit(1)
 
 
@@ -86,7 +85,7 @@ def mvar_report():
             print("No verified decisions available.")
             print()
             print("Possible cause: signature verification mismatch.")
-            print("If running HMAC fallback mode, ensure QSEAL_SECRET matches the value")
+            print("If verifying legacy HMAC fallback entries, ensure QSEAL_SECRET matches the value")
             print("used when decisions were recorded.")
         else:
             print("No decisions recorded yet.")
@@ -451,7 +450,7 @@ _VERIFY_WITNESS_HELP_TEXT = """Usage: mvar-verify-witness <ledger.jsonl> [option
 
 Options:
   --require-chain     Require valid signature chain
-  --qseal-key PATH    Verify using provided QSEAL key
+  --qseal-key PATH    Verify legacy hmac-sha256 signatures using provided key
   --quiet             Minimal output
   --json              JSON verification output
   -h, --help          Show help"""
@@ -513,8 +512,8 @@ def _parse_verify_witness_args(argv: List[str]) -> Dict[str, Any]:
 
 def _apply_qseal_key_path(qseal_key_path: Optional[str]) -> Tuple[Optional[str], bool]:
     """
-    Apply optional --qseal-key for HMAC verification mode by temporarily setting
-    QSEAL_SECRET from file contents.
+    Apply optional --qseal-key for legacy hmac-sha256 verification mode by
+    temporarily setting QSEAL_SECRET from file contents.
     """
     if not qseal_key_path:
         return None, False

@@ -1,13 +1,16 @@
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
+import os
 import sys
 from types import SimpleNamespace
 
 import pytest
 
 from mvar_core.cli_ledger import main_verify_witness, verify_witness_file
-from mvar_core.decision_ledger import MVARDecisionLedger, generate_signature
+from mvar_core.decision_ledger import MVARDecisionLedger
 
 
 def _build_signed_witness_jsonl(tmp_path, monkeypatch, *, count: int = 2):
@@ -34,13 +37,24 @@ def _read_jsonl(path):
 
 def _resign_scroll(tmp_path, scroll):
     ledger = MVARDecisionLedger(ledger_path=str(tmp_path / "noop.jsonl"), enable_qseal_signing=True)
+    algorithm = str(scroll.get("qseal_algorithm", ledger.qseal_mode)).strip().lower()
+    assert algorithm in {"ed25519", "hmac-sha256"}
+
+    scroll["qseal_algorithm"] = algorithm
     scroll["meta_hash"] = ledger._compute_meta_hash(scroll)  # noqa: SLF001
-    payload = {
-        k: v
-        for k, v in scroll.items()
-        if k not in ("qseal_signature", "qseal_verified", "qseal_meta_hash", "qseal_algorithm")
-    }
-    scroll["qseal_signature"] = generate_signature(payload)
+    payload = ledger._signed_payload(scroll)  # noqa: SLF001
+
+    if algorithm == "ed25519":
+        private_key = getattr(ledger._qseal_signer, "_private_key", None)  # noqa: SLF001
+        assert private_key is not None
+        signature_hex = private_key.sign(payload).hex()
+    else:
+        hmac_key = getattr(ledger._qseal_signer, "_hmac_key", None)  # noqa: SLF001
+        if hmac_key is None:
+            hmac_key = os.getenv("QSEAL_SECRET", "").encode("utf-8")
+        signature_hex = hmac.new(hmac_key, payload, hashlib.sha256).hexdigest()
+
+    scroll["qseal_signature"] = f"{algorithm}:{signature_hex}"
     return scroll
 
 
@@ -247,7 +261,7 @@ def test_cli_help_outputs_exact_text(monkeypatch, capsys):
         "Usage: mvar-verify-witness <ledger.jsonl> [options]\n\n"
         "Options:\n"
         "  --require-chain     Require valid signature chain\n"
-        "  --qseal-key PATH    Verify using provided QSEAL key\n"
+        "  --qseal-key PATH    Verify legacy hmac-sha256 signatures using provided key\n"
         "  --quiet             Minimal output\n"
         "  --json              JSON verification output\n"
         "  -h, --help          Show help"
