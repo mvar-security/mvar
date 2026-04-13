@@ -1,6 +1,7 @@
 """API contract tests to prevent docs/example drift in future phases."""
 
 import inspect
+import os
 
 import pytest
 from mvar_adapters.base import MVARExecutionAdapter
@@ -153,34 +154,44 @@ def test_governor_bridge_decision_shape_contract(monkeypatch):
 
 
 def test_governor_witness_signature_uses_truthful_algorithm_label(monkeypatch):
+    original_env = os.environ.copy()
     monkeypatch.setenv("MVAR_REQUIRE_EXECUTION_TOKEN", "0")
     monkeypatch.setenv("MVAR_FAIL_CLOSED", "1")
     monkeypatch.setenv("MVAR_ENABLE_LEDGER", "0")
     monkeypatch.setenv("MVAR_ENABLE_TRUST_ORACLE", "0")
     monkeypatch.delenv("MVAR_ENFORCE_ED25519", raising=False)
 
-    from mvar.governor import ExecutionGovernor
+    try:
+        from mvar.governor import ExecutionGovernor
 
-    governor = ExecutionGovernor(policy_profile="dev_balanced")
-    decision = governor.evaluate(
-        {
-            "sink_type": "tool.custom",
-            "target": "status",
-            "arguments": {"command": "echo ok"},
-            "prompt_provenance": {"source": "user_request", "taint_level": "trusted"},
-        }
-    )
+        governor = ExecutionGovernor(policy_profile="dev_balanced")
+        decision = governor.evaluate(
+            {
+                "sink_type": "tool.custom",
+                "target": "status",
+                "arguments": {"command": "echo ok"},
+                "prompt_provenance": {"source": "user_request", "taint_level": "trusted"},
+            }
+        )
 
-    algorithm, signature_hex = str(decision.witness_signature).split(":", 1)
-    assert algorithm in {"ed25519", "hmac-sha256"}
-    assert signature_hex
+        algorithm, signature_hex = str(decision.witness_signature).split(":", 1)
+        assert algorithm in {"ed25519", "hmac-sha256"}
+        assert signature_hex
+    finally:
+        os.environ.clear()
+        os.environ.update(original_env)
 
 
 def test_governor_prod_locked_fails_closed_without_ed25519(monkeypatch):
+    original_env = os.environ.copy()
     monkeypatch.setattr(qseal, "_CRYPTO_AVAILABLE", False)
     monkeypatch.delenv("MVAR_ENFORCE_ED25519", raising=False)
 
-    from mvar.governor import ExecutionGovernor
+    try:
+        from mvar.governor import ExecutionGovernor
 
-    with pytest.raises(RuntimeError, match="MVAR_ENFORCE_ED25519=1"):
-        ExecutionGovernor(policy_profile="prod_locked")
+        with pytest.raises(RuntimeError, match="MVAR_ENFORCE_ED25519=1"):
+            ExecutionGovernor(policy_profile="prod_locked")
+    finally:
+        os.environ.clear()
+        os.environ.update(original_env)
