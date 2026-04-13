@@ -29,6 +29,7 @@ import hmac
 import base64
 import binascii
 import json
+import logging
 import os
 import re
 import shlex
@@ -57,6 +58,7 @@ try:
         build_signed_bundle,
         canonicalize_sinks,
         compute_policy_hash,
+        policy_context_from_bundle,
         verify_signed_bundle,
     )
 except ImportError:
@@ -76,8 +78,12 @@ except ImportError:
         build_signed_bundle,
         canonicalize_sinks,
         compute_policy_hash,
+        policy_context_from_bundle,
         verify_signed_bundle,
     )
+
+
+_LOGGER = logging.getLogger("mvar.sink_policy")
 
 
 class SinkRisk(Enum):
@@ -259,16 +265,61 @@ class SinkPolicy:
         self.observability = MVARObservability.from_env()
         self.max_command_len = int(os.getenv("MVAR_MAX_COMMAND_LEN", "1024"))
         self.max_blob_len = int(os.getenv("MVAR_MAX_BLOB_LEN", "32768"))
+        self.runtime_profile = os.getenv("MVAR_RUNTIME_PROFILE", "dev_balanced").strip().lower()
+        if self.runtime_profile not in {"prod_locked", "dev_strict", "dev_balanced"}:
+            self.runtime_profile = "dev_balanced"
         self._expected_policy_hash = os.getenv("MVAR_EXPECTED_POLICY_HASH", "").strip()
-        self.require_signed_policy_bundle = os.getenv("MVAR_REQUIRE_SIGNED_POLICY_BUNDLE", "0") == "1"
+        self.require_signed_policy_bundle = os.getenv("MVAR_REQUIRE_SIGNED_POLICY_BUNDLE", "1") == "1"
         self.enforce_ed25519 = os.getenv("MVAR_ENFORCE_ED25519", "0") == "1"
+        self.enforce_policy_bundle_ed25519 = os.getenv("MVAR_POLICY_BUNDLE_ENFORCE_ED25519", "1") == "1"
         self.http_default_deny = os.getenv("MVAR_HTTP_DEFAULT_DENY", "0") == "1"
         self.http_allowlist = self._parse_domain_allowlist(os.getenv("MVAR_HTTP_ALLOWLIST", ""))
-        self.policy_bundle_path = os.getenv("MVAR_POLICY_BUNDLE_PATH", "").strip()
+        bundle_path_env = os.getenv("MVAR_POLICY_BUNDLE_PATH", "").strip()
+        self._policy_bundle_path_explicit = bool(bundle_path_env)
+        if self._policy_bundle_path_explicit:
+            self.policy_bundle_path = bundle_path_env
+        else:
+            default_bundle = Path.home() / ".mvar" / "policy_bundles" / f"{self.runtime_profile}_policy_bundle.json"
+            try:
+                default_bundle.parent.mkdir(parents=True, exist_ok=True)
+                self.policy_bundle_path = str(default_bundle)
+            except (PermissionError, OSError):
+                fallback_bundle = Path("/tmp/mvar_policy_bundles") / f"{self.runtime_profile}_policy_bundle.json"
+                fallback_bundle.parent.mkdir(parents=True, exist_ok=True)
+                self.policy_bundle_path = str(fallback_bundle)
+
+        lineage_path_env = os.getenv("MVAR_POLICY_LINEAGE_PATH", "").strip()
+        self._policy_lineage_path_explicit = bool(lineage_path_env)
+        if self._policy_lineage_path_explicit:
+            self.policy_lineage_path = lineage_path_env
+        else:
+            self.policy_lineage_path = str(Path(self.policy_bundle_path).with_suffix(".lineage.jsonl"))
+        self.policy_bundle_auto_bootstrap = os.getenv("MVAR_POLICY_BUNDLE_AUTO_BOOTSTRAP", "1") == "1"
         self._policy_bundle_secret = os.getenv(
             "MVAR_POLICY_BUNDLE_SECRET",
             os.getenv("MVAR_EXEC_TOKEN_SECRET", os.getenv("QSEAL_SECRET", "")),
         ).encode("utf-8")
+        self.enable_policy_drift_detection = os.getenv("MVAR_ENABLE_POLICY_DRIFT_DETECTION", "1") == "1"
+        self.policy_drift_thresholds = {
+            "prod_locked": float(
+                os.getenv(
+                    "MVAR_POLICY_DRIFT_THRESHOLD_PROD_LOCKED",
+                    os.getenv("MVAR_POLICY_DRIFT_THRESHOLD", "0.10"),
+                )
+            ),
+            "dev_strict": float(
+                os.getenv(
+                    "MVAR_POLICY_DRIFT_THRESHOLD_DEV_STRICT",
+                    os.getenv("MVAR_POLICY_DRIFT_THRESHOLD", "0.20"),
+                )
+            ),
+            "dev_balanced": float(
+                os.getenv(
+                    "MVAR_POLICY_DRIFT_THRESHOLD_DEV_BALANCED",
+                    os.getenv("MVAR_POLICY_DRIFT_THRESHOLD", "0.30"),
+                )
+            ),
+        }
         self.principal_id = os.getenv("MVAR_PRINCIPAL_ID", f"local_install:{hashlib.sha256(str(Path.cwd()).encode('utf-8')).hexdigest()[:12]}")
         self.require_execution_token = os.getenv("MVAR_REQUIRE_EXECUTION_TOKEN", "0") == "1"
         self.execution_token_ttl_seconds = int(os.getenv("MVAR_EXECUTION_TOKEN_TTL_SECONDS", "300"))
@@ -306,6 +357,8 @@ class SinkPolicy:
         self._consumed_declassify_token_nonces: Dict[str, datetime] = {}
         self._startup_policy_verified = False
         self._startup_policy_error: Optional[str] = None
+        self._active_policy_bundle: Optional[Dict[str, Any]] = None
+        self._active_policy_context: Dict[str, Any] = {}
         self._execution_token_nonce_store = None
         if self.execution_token_one_time and self.execution_token_nonce_persist:
             try:
@@ -781,22 +834,172 @@ class SinkPolicy:
     def _compute_policy_hash(self) -> str:
         return compute_policy_hash(self._canonical_policy_payload())
 
+    def _current_security_context(self) -> Dict[str, Any]:
+        """Capture security context snapshot used for bundle lineage + drift detection."""
+        return {
+            "runtime_profile": self.runtime_profile,
+            "fail_closed": self.fail_closed,
+            "enforce_ed25519": self.enforce_ed25519,
+            "enforce_policy_bundle_ed25519": self.enforce_policy_bundle_ed25519,
+            "require_signed_policy_bundle": self.require_signed_policy_bundle,
+            "require_execution_token": self.require_execution_token,
+            "require_execution_contract": self.require_execution_contract,
+            "execution_token_one_time": self.execution_token_one_time,
+            "require_declassify_token": self.require_declassify_token,
+            "declassify_token_one_time": self.declassify_token_one_time,
+            "http_default_deny": self.http_default_deny,
+            "http_allowlist": list(self.http_allowlist),
+            "principal_id": self.principal_id,
+            "max_command_len": self.max_command_len,
+            "max_blob_len": self.max_blob_len,
+        }
+
+    @staticmethod
+    def _compute_context_drift(
+        creation_context: Dict[str, Any],
+        current_context: Dict[str, Any],
+    ) -> tuple[float, Dict[str, Dict[str, Any]]]:
+        keys = sorted(set(creation_context.keys()) | set(current_context.keys()))
+        if not keys:
+            return 0.0, {}
+        diff: Dict[str, Dict[str, Any]] = {}
+        changed = 0
+        for key in keys:
+            old_value = creation_context.get(key)
+            new_value = current_context.get(key)
+            if old_value != new_value:
+                changed += 1
+                diff[str(key)] = {"created": old_value, "current": new_value}
+        return changed / max(len(keys), 1), diff
+
+    def _load_verified_bundle(self, bundle_path: str, policy_hash: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        bundle_file = Path(bundle_path)
+        if not bundle_file.exists():
+            return None
+        try:
+            bundle = json.loads(bundle_file.read_text(encoding="utf-8"))
+        except Exception:
+            return None
+        if not verify_signed_bundle(
+            bundle,
+            self._policy_bundle_secret,
+            enforce_ed25519=self.enforce_policy_bundle_ed25519,
+        ):
+            return None
+        if policy_hash is not None and str(bundle.get("policy_hash", "")) != policy_hash:
+            return None
+        return bundle
+
+    def _materialize_policy_artifact_paths(self, policy_hash: str) -> None:
+        """
+        Resolve implicit bundle/lineage paths to policy-hash-specific files.
+
+        This avoids cross-policy collisions when multiple test/runtime variants
+        share the same profile but have different canonical sink registries.
+        Explicit env-configured paths are never rewritten.
+        """
+        if not policy_hash:
+            return
+        if not self._policy_bundle_path_explicit and self.policy_bundle_path:
+            current_path = Path(self.policy_bundle_path)
+            hashed_name = f"{current_path.stem}_{policy_hash[:16]}{current_path.suffix}"
+            self.policy_bundle_path = str(current_path.with_name(hashed_name))
+        if not self._policy_lineage_path_explicit and self.policy_bundle_path:
+            self.policy_lineage_path = str(Path(self.policy_bundle_path).with_suffix(".lineage.jsonl"))
+
+    def _lineage_signature_set(self) -> set[str]:
+        entries: set[str] = set()
+        path = Path(self.policy_lineage_path)
+        if not path.exists():
+            return entries
+        try:
+            with path.open("r", encoding="utf-8") as handle:
+                for line in handle:
+                    if not line.strip():
+                        continue
+                    entry = json.loads(line)
+                    signature = str(entry.get("bundle_signature", "")).strip()
+                    if signature:
+                        entries.add(signature)
+        except Exception:
+            return entries
+        return entries
+
+    def _append_policy_lineage_entry(self, bundle: Dict[str, Any], bundle_path: str) -> None:
+        lineage_path = Path(self.policy_lineage_path)
+        lineage_path.parent.mkdir(parents=True, exist_ok=True)
+
+        signature = f"{bundle.get('algorithm')}:{bundle.get('signature')}"
+        lineage = bundle.get("lineage", {}) if isinstance(bundle.get("lineage"), dict) else {}
+        payload = {
+            "event": "policy_bundle_created",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "bundle_path": str(bundle_path),
+            "policy_hash": str(bundle.get("policy_hash", "")),
+            "bundle_signature": signature,
+            "lineage_node_id": str(lineage.get("node_id", "")),
+            "predecessor_signatures": [str(item) for item in lineage.get("predecessor_signatures", [])],
+            "predecessor_policy_hashes": [str(item) for item in lineage.get("predecessor_policy_hashes", [])],
+        }
+        if self.enable_qseal:
+            sealed = self.qseal_signer.seal_result(payload)
+            payload["qseal_algorithm"] = sealed.algorithm
+            payload["qseal_signature"] = f"{sealed.algorithm}:{sealed.signature_hex}"
+            payload["qseal_verified"] = bool(sealed.verified)
+        with lineage_path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(payload, sort_keys=True) + "\n")
+
+    def _verify_lineage_chain(self, bundle: Dict[str, Any]) -> Optional[str]:
+        lineage = bundle.get("lineage")
+        if not isinstance(lineage, dict):
+            return "Signed policy bundle missing lineage metadata"
+        predecessors = [str(item) for item in lineage.get("predecessor_signatures", [])]
+        if not predecessors:
+            return None
+        known_signatures = self._lineage_signature_set()
+        if not known_signatures:
+            return "Signed policy bundle lineage chain broken: no known predecessor signatures"
+        missing = [signature for signature in predecessors if signature not in known_signatures]
+        if missing:
+            return (
+                "Signed policy bundle lineage chain broken: missing predecessor signature(s) "
+                + ",".join(missing)
+            )
+        return None
+
     def write_signed_policy_bundle(self, bundle_path: Optional[str] = None, issuer: str = "mvar_runtime") -> Dict[str, Any]:
         """Emit signed policy bundle for deterministic startup verification."""
-        if not self._policy_bundle_secret and not self.enforce_ed25519:
+        enforce_ed25519 = self.enforce_policy_bundle_ed25519 or self.enforce_ed25519
+        if not self._policy_bundle_secret and not enforce_ed25519:
             raise RuntimeError("policy bundle secret missing")
-        target_path = bundle_path or self.policy_bundle_path
+        if bundle_path:
+            target_path = bundle_path
+        else:
+            self._materialize_policy_artifact_paths(self._compute_policy_hash())
+            target_path = self.policy_bundle_path
         if not target_path:
             raise RuntimeError("policy bundle path missing")
+        predecessor_signatures: List[str] = []
+        predecessor_policy_hashes: List[str] = []
+        predecessor_bundle = self._load_verified_bundle(target_path, policy_hash=None)
+        if predecessor_bundle:
+            predecessor_signatures.append(
+                f"{predecessor_bundle.get('algorithm')}:{predecessor_bundle.get('signature')}"
+            )
+            predecessor_policy_hashes.append(str(predecessor_bundle.get("policy_hash", "")))
         bundle = build_signed_bundle(
             canonical_payload=self._canonical_policy_payload(),
             secret=self._policy_bundle_secret,
             issuer=issuer,
-            enforce_ed25519=self.enforce_ed25519,
+            enforce_ed25519=enforce_ed25519,
+            predecessor_signatures=predecessor_signatures,
+            predecessor_policy_hashes=predecessor_policy_hashes,
+            security_context=self._current_security_context(),
         )
         path = Path(target_path)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(bundle, indent=2, sort_keys=True), encoding="utf-8")
+        self._append_policy_lineage_entry(bundle=bundle, bundle_path=str(path))
         return bundle
 
     def _verify_startup_policy_bundle(self, policy_hash: str) -> Optional[str]:
@@ -810,26 +1013,38 @@ class SinkPolicy:
         if self._expected_policy_hash and self._expected_policy_hash != policy_hash:
             return "Policy integrity mismatch (expected hash does not match runtime hash)"
 
+        self._materialize_policy_artifact_paths(policy_hash)
+
         require_bundle = self.require_signed_policy_bundle or bool(self.policy_bundle_path)
         if not require_bundle:
+            self._active_policy_bundle = None
+            self._active_policy_context = {}
             return None
         if not self.policy_bundle_path:
             return "Signed policy bundle required but MVAR_POLICY_BUNDLE_PATH is unset"
-        if not self._policy_bundle_secret and not self.enforce_ed25519:
+        enforce_ed25519 = self.enforce_policy_bundle_ed25519 or self.enforce_ed25519
+        if not self._policy_bundle_secret and not enforce_ed25519:
             return "Signed policy bundle required but secret is missing"
 
         bundle_file = Path(self.policy_bundle_path)
         if not bundle_file.exists():
-            return f"Signed policy bundle not found: {bundle_file}"
+            if not self.policy_bundle_auto_bootstrap:
+                return f"Signed policy bundle not found: {bundle_file}"
+            try:
+                self.write_signed_policy_bundle(bundle_path=str(bundle_file), issuer="mvar_runtime_auto")
+            except Exception as exc:
+                return f"Signed policy bundle bootstrap failed: {exc}"
         try:
             bundle = json.loads(bundle_file.read_text(encoding="utf-8"))
         except Exception as exc:
             return f"Signed policy bundle parse failed: {exc}"
 
-        if self.enforce_ed25519 and str(bundle.get("algorithm", "")).lower() != "ed25519":
-            return "Signed policy bundle must use algorithm=ed25519 when MVAR_ENFORCE_ED25519=1"
-        if not verify_signed_bundle(bundle, self._policy_bundle_secret, enforce_ed25519=self.enforce_ed25519):
-            if self.enforce_ed25519:
+        if enforce_ed25519 and str(bundle.get("algorithm", "")).lower() != "ed25519":
+            return (
+                "Signed policy bundle must use algorithm=ed25519 when policy lineage signing is enforced"
+            )
+        if not verify_signed_bundle(bundle, self._policy_bundle_secret, enforce_ed25519=enforce_ed25519):
+            if enforce_ed25519:
                 return (
                     "Signed policy bundle signature verification failed "
                     "(Ed25519 required; ensure cryptography/public key configuration is valid)"
@@ -841,6 +1056,11 @@ class SinkPolicy:
         bundle_payload = bundle.get("canonical_policy")
         if bundle_payload != self._canonical_policy_payload():
             return "Signed policy bundle payload does not match runtime canonical policy"
+        lineage_error = self._verify_lineage_chain(bundle)
+        if lineage_error:
+            return lineage_error
+        self._active_policy_bundle = bundle
+        self._active_policy_context = policy_context_from_bundle(bundle)
         return None
 
     def _enforce_target_boundary(
@@ -903,6 +1123,22 @@ class SinkPolicy:
                     return f"egress hostname '{hostname}' outside allowlist"
         return None
 
+    def _assess_policy_context_drift(self) -> tuple[bool, float, Dict[str, Dict[str, Any]]]:
+        """
+        Compare current runtime context against policy creation-time snapshot.
+
+        Returns:
+            (drift_detected, drift_magnitude, diff_map)
+        """
+        if not self.enable_policy_drift_detection:
+            return False, 0.0, {}
+        if not self._active_policy_context:
+            return False, 0.0, {}
+        current_context = self._current_security_context()
+        magnitude, diff_map = self._compute_context_drift(self._active_policy_context, current_context)
+        threshold = self.policy_drift_thresholds.get(self.runtime_profile, 0.20)
+        return magnitude >= threshold, magnitude, diff_map
+
     def evaluate(
         self,
         tool: str,
@@ -950,7 +1186,11 @@ class SinkPolicy:
                     ),
                     provenance_node_id=provenance_node_id,
                     capability_granted=False,
-                    evaluation_trace=evaluation_trace + ["startup_policy_verification_failed → BLOCK"],
+                    evaluation_trace=evaluation_trace
+                    + [
+                        f"policy_artifact_rejected: {self._startup_policy_error}",
+                        "startup_policy_verification_failed → BLOCK",
+                    ],
                     target=target,
                     policy_hash=policy_hash,
                 )
@@ -1197,6 +1437,29 @@ class SinkPolicy:
                 reason = f"{sink.risk.value} risk + {integrity.value} integrity = STEP_UP for safety"
 
             evaluation_trace.append(f"base_decision: {outcome.value}")
+
+        drift_detected, drift_magnitude, drift_diff = self._assess_policy_context_drift()
+        if drift_detected:
+            drift_payload = json.dumps(drift_diff, sort_keys=True, separators=(",", ":"), default=str)
+            evaluation_trace.append(f"policy_context_drift_detected: magnitude={drift_magnitude:.4f}")
+            evaluation_trace.append(f"policy_context_drift_diff: {drift_payload}")
+            self.observability.set_drift_velocity(drift_magnitude)
+            if self.runtime_profile == "prod_locked" and outcome == PolicyOutcome.ALLOW:
+                outcome = PolicyOutcome.STEP_UP
+                reason = (
+                    "Policy security context drift exceeded threshold; "
+                    "STEP_UP required in prod_locked"
+                )
+                evaluation_trace.append("policy_context_drift_escalation: ALLOW→STEP_UP")
+            elif self.runtime_profile == "dev_strict":
+                evaluation_trace.append("policy_context_drift_advisory_step_up_recommended")
+                _LOGGER.warning(
+                    "Policy context drift detected in dev_strict | magnitude=%.4f diff=%s",
+                    drift_magnitude,
+                    drift_payload,
+                )
+            else:
+                evaluation_trace.append("policy_context_drift_telemetry_only")
 
         # 7. NEW: Apply trust oracle adjustment BEFORE creating decision (audit consistency)
         trust_adjusted = False
