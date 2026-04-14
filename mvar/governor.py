@@ -19,6 +19,7 @@ from mvar_core.provenance import (
     provenance_external_doc,
     provenance_user_input,
 )
+from mvar_core.advanced_risk import AdvancedRiskEngine, AdvancedRiskResult
 from mvar_core.qseal import QSealSigner
 from mvar_core.sink_policy import PolicyOutcome
 from mvar_core.credential_vault import CredentialVaultClient
@@ -57,6 +58,8 @@ class ExecutionDecision:
 
     vault_token_reference: Optional[dict[str, Any]] = None
     # for credentials.access mediation; never contains raw credential material
+    risk_assessment: Optional[dict[str, Any]] = None
+    # advanced risk-scoring snapshot included in signed witness payload
 
 
 class ExecutionGovernor:
@@ -81,6 +84,28 @@ class ExecutionGovernor:
         resolved_profile = policy_profile or profile
         self.profile_name = resolved_profile
         self.security_profile = self._PROFILE_MAP.get(resolved_profile, SecurityProfile.BALANCED)
+        risk_override_keys = [
+            "MVAR_ADV_RISK_CONFIDENCE_THRESHOLD_PROD_LOCKED",
+            "MVAR_ADV_RISK_CONFIDENCE_THRESHOLD_DEV_STRICT",
+            "MVAR_ADV_RISK_CONFIDENCE_THRESHOLD_DEV_BALANCED",
+            "MVAR_ADV_RISK_LOW_OMISSION_THRESHOLD_PROD_LOCKED",
+            "MVAR_ADV_RISK_LOW_OMISSION_THRESHOLD_DEV_STRICT",
+            "MVAR_ADV_RISK_LOW_OMISSION_THRESHOLD_DEV_BALANCED",
+            "MVAR_ADV_RISK_VOTE_QUORUM_PROD_LOCKED",
+            "MVAR_ADV_RISK_VOTE_QUORUM_DEV_STRICT",
+            "MVAR_ADV_RISK_VOTE_QUORUM_DEV_BALANCED",
+            "MVAR_ADV_RISK_VOTE_FLOOR_PROD_LOCKED",
+            "MVAR_ADV_RISK_VOTE_FLOOR_DEV_STRICT",
+            "MVAR_ADV_RISK_VOTE_FLOOR_DEV_BALANCED",
+            "MVAR_ADV_RISK_VOTE_VARIANCE_THRESHOLD_PROD_LOCKED",
+            "MVAR_ADV_RISK_VOTE_VARIANCE_THRESHOLD_DEV_STRICT",
+            "MVAR_ADV_RISK_VOTE_VARIANCE_THRESHOLD_DEV_BALANCED",
+        ]
+        risk_overrides = {
+            key: os.environ[key]
+            for key in risk_override_keys
+            if key in os.environ
+        }
         os.environ["MVAR_RUNTIME_PROFILE"] = resolved_profile
         if resolved_profile == "prod_locked":
             os.environ["MVAR_ENFORCE_ED25519"] = "1"
@@ -107,6 +132,8 @@ class ExecutionGovernor:
             profile=self.security_profile,
             enable_qseal=True,
         )
+        for key, value in risk_overrides.items():
+            os.environ[key] = value
         self._register_default_capabilities(self.capability_runtime)
         self.adapter = MVARExecutionAdapter(
             policy=self.sink_policy,
@@ -120,6 +147,19 @@ class ExecutionGovernor:
         )
         self._vault_default_ttl = int(os.getenv("MVAR_VAULT_TOKEN_TTL_SECONDS", "300"))
         self._vault_single_use = os.getenv("MVAR_VAULT_TOKEN_SINGLE_USE", "1") == "1"
+        os.environ.setdefault("MVAR_ADV_RISK_CONFIDENCE_THRESHOLD_PROD_LOCKED", "0.62")
+        os.environ.setdefault("MVAR_ADV_RISK_CONFIDENCE_THRESHOLD_DEV_STRICT", "0.58")
+        os.environ.setdefault("MVAR_ADV_RISK_CONFIDENCE_THRESHOLD_DEV_BALANCED", "0.55")
+        os.environ.setdefault("MVAR_ADV_RISK_LOW_OMISSION_THRESHOLD_PROD_LOCKED", "0.45")
+        os.environ.setdefault("MVAR_ADV_RISK_LOW_OMISSION_THRESHOLD_DEV_STRICT", "0.40")
+        os.environ.setdefault("MVAR_ADV_RISK_LOW_OMISSION_THRESHOLD_DEV_BALANCED", "0.35")
+        os.environ.setdefault("MVAR_ADV_RISK_VOTE_QUORUM_PROD_LOCKED", "2")
+        os.environ.setdefault("MVAR_ADV_RISK_VOTE_QUORUM_DEV_STRICT", "2")
+        os.environ.setdefault("MVAR_ADV_RISK_VOTE_QUORUM_DEV_BALANCED", "1")
+        os.environ.setdefault("MVAR_ADV_RISK_VOTE_VARIANCE_THRESHOLD_PROD_LOCKED", "0.22")
+        os.environ.setdefault("MVAR_ADV_RISK_VOTE_VARIANCE_THRESHOLD_DEV_STRICT", "0.28")
+        os.environ.setdefault("MVAR_ADV_RISK_VOTE_VARIANCE_THRESHOLD_DEV_BALANCED", "0.35")
+        self._advanced_risk = AdvancedRiskEngine(self.profile_name)
 
     def evaluate(self, request: dict[str, Any]) -> ExecutionDecision:
         req = dict(request or {})
@@ -129,9 +169,24 @@ class ExecutionGovernor:
         prompt_provenance = (
             req.get("prompt_provenance") if isinstance(req.get("prompt_provenance"), dict) else {}
         )
+        task_context = str(req.get("task_context") or arguments.get("task_context") or arguments.get("goal") or "")
+        behavioral_score = self._coerce_score(req.get("behavioral_score", arguments.get("behavioral_score")), 0.50)
+        behavioral_baseline = self._coerce_score(
+            req.get("behavioral_baseline", arguments.get("behavioral_baseline")),
+            0.50,
+        )
 
         mapped_tool, mapped_action, sink_classification = self._map_sink(sink_type, target, arguments)
         normalized_target = self._resolve_target(sink_type, target, arguments)
+        risk_context = self._build_risk_context(
+            sink_type=sink_type,
+            sink_classification=sink_classification,
+            target=normalized_target,
+            arguments=arguments,
+            task_context=task_context,
+            behavioral_score=behavioral_score,
+            behavioral_baseline=behavioral_baseline,
+        )
 
         provenance_node_id, provenance = self._build_provenance(prompt_provenance, normalized_target, arguments)
         integrity_level = str(provenance.get("integrity", "unknown")).upper()
@@ -151,6 +206,7 @@ class ExecutionGovernor:
                     "final_outcome=BLOCK",
                 ],
                 enforcement_action=None,
+                risk_context=risk_context,
             )
 
         if sink_type == "http.request" and self.profile_name == "prod_locked":
@@ -166,14 +222,15 @@ class ExecutionGovernor:
                     provenance=provenance,
                     sink_classification=sink_classification,
                     integrity_level=integrity_level,
-                    evaluation_trace=[
-                        f"input_integrity={integrity_level}",
-                        f"sink_classification={sink_classification}",
-                        f"rule_fired={reason_code}",
-                        "final_outcome=ALLOW",
-                    ],
-                    enforcement_action=None,
-                )
+                evaluation_trace=[
+                    f"input_integrity={integrity_level}",
+                    f"sink_classification={sink_classification}",
+                    f"rule_fired={reason_code}",
+                    "final_outcome=ALLOW",
+                ],
+                enforcement_action=None,
+                risk_context=risk_context,
+            )
             if hostname not in {"localhost", "127.0.0.1"}:
                 reason_code = "DOMAIN_BLOCKED"
                 return self._build_decision(
@@ -182,14 +239,15 @@ class ExecutionGovernor:
                     provenance=provenance,
                     sink_classification=sink_classification,
                     integrity_level=integrity_level,
-                    evaluation_trace=[
-                        f"input_integrity={integrity_level}",
-                        f"sink_classification={sink_classification}",
-                        f"rule_fired={reason_code}",
-                        "final_outcome=BLOCK",
-                    ],
-                    enforcement_action=None,
-                )
+                evaluation_trace=[
+                    f"input_integrity={integrity_level}",
+                    f"sink_classification={sink_classification}",
+                    f"rule_fired={reason_code}",
+                    "final_outcome=BLOCK",
+                ],
+                enforcement_action=None,
+                risk_context=risk_context,
+            )
 
         pre_decision = self.adapter.evaluate(
             tool=mapped_tool,
@@ -270,10 +328,116 @@ class ExecutionGovernor:
             evaluation_trace=evaluation_trace,
             enforcement_action=enforcement_action,
             vault_token_reference=vault_token_reference,
+            risk_context=risk_context,
         )
 
     def get_version(self) -> str:
         return __version__
+
+    @staticmethod
+    def _coerce_score(value: Any, default: float) -> float:
+        try:
+            parsed = float(value)
+        except (TypeError, ValueError):
+            parsed = float(default)
+        return max(0.0, min(1.0, parsed))
+
+    def _build_risk_context(
+        self,
+        *,
+        sink_type: str,
+        sink_classification: str,
+        target: str,
+        arguments: dict[str, Any],
+        task_context: str,
+        behavioral_score: float,
+        behavioral_baseline: float,
+    ) -> dict[str, Any]:
+        return {
+            "sink_type": sink_type,
+            "sink_classification": sink_classification,
+            "target": target,
+            "arguments": dict(arguments),
+            "task_context": task_context,
+            "behavioral_score": behavioral_score,
+            "behavioral_baseline": behavioral_baseline,
+        }
+
+    def _apply_advanced_risk(
+        self,
+        *,
+        decision: str,
+        reason_code: str,
+        enforcement_action: Optional[str],
+        provenance: dict[str, Any],
+        evaluation_trace: list[str],
+        risk_context: dict[str, Any],
+    ) -> tuple[str, str, Optional[str], AdvancedRiskResult, list[str]]:
+        risk_result = self._advanced_risk.assess(
+            sink_type=str(risk_context.get("sink_type", "tool.custom")),
+            sink_classification=str(risk_context.get("sink_classification", "LOW")),
+            target=str(risk_context.get("target", "")),
+            arguments=risk_context.get("arguments", {}) if isinstance(risk_context.get("arguments"), dict) else {},
+            provenance=provenance,
+            base_decision=decision,
+            reason_code=reason_code,
+            task_context=str(risk_context.get("task_context", "")),
+            behavioral_score=self._coerce_score(risk_context.get("behavioral_score"), 0.50),
+            behavioral_baseline=self._coerce_score(risk_context.get("behavioral_baseline"), 0.50),
+        )
+        trace = list(evaluation_trace)
+        trace.append(f"risk_mode={risk_result.mode}")
+        trace.append(f"risk_confidence={risk_result.final_confidence:.4f}")
+        trace.append(f"risk_threshold={risk_result.confidence_threshold:.4f}")
+        trace.append(f"risk_omission_cost={risk_result.omission_cost:.4f}")
+        trace.append(
+            f"risk_counterfactual_injection={str(risk_result.injection_suspected).lower()} "
+            f"(threshold={risk_result.low_omission_threshold:.4f})"
+        )
+        trace.append(
+            f"risk_voting=quorum:{risk_result.votes_for_promotion}/{risk_result.vote_quorum}, "
+            f"variance:{risk_result.vote_variance:.4f}/{risk_result.variance_threshold:.4f}, "
+            f"disagreement:{str(risk_result.voting_disagreement).lower()}"
+        )
+        trace.append(
+            "risk_sublayers="
+            f"provenance:{risk_result.sublayer_scores['provenance']:.4f},"
+            f"counterfactual:{risk_result.sublayer_scores['counterfactual']:.4f},"
+            f"behavioral:{risk_result.sublayer_scores['behavioral']:.4f}"
+        )
+        trace.append(f"risk_self_assessment_penalty={risk_result.self_assessment_penalty:.4f}")
+
+        if risk_result.mode == "blocking":
+            if risk_result.recommended_outcome == "block" and decision != "block":
+                decision = "block"
+                reason_code = risk_result.recommended_reason
+                enforcement_action = None
+                trace.append("risk_enforcement:block")
+            elif (
+                risk_result.recommended_outcome == "step_up"
+                and decision == "allow"
+            ):
+                decision = "annotate"
+                reason_code = risk_result.recommended_reason
+                enforcement_action = "block_until_approved"
+                trace.append("risk_enforcement:step_up")
+            else:
+                trace.append("risk_enforcement:no_change")
+        elif risk_result.mode == "advisory":
+            trace.append(
+                "risk_advisory="
+                f"{risk_result.recommended_reason}:{risk_result.recommended_outcome}"
+            )
+            if risk_result.voting_disagreement:
+                _LOGGER.warning(
+                    "Advanced risk voting disagreement in dev_strict | score=%.4f reason=%s",
+                    risk_result.final_confidence,
+                    risk_result.recommended_reason,
+                )
+        else:
+            trace.append("risk_monitor=recorded")
+
+        return decision, reason_code, enforcement_action, risk_result, trace
 
     @staticmethod
     def _provenance_node_hash(provenance: dict[str, Any]) -> str:
@@ -591,7 +755,32 @@ class ExecutionGovernor:
         evaluation_trace: list[str],
         enforcement_action: Optional[str],
         vault_token_reference: Optional[dict[str, Any]] = None,
+        risk_context: Optional[dict[str, Any]] = None,
     ) -> ExecutionDecision:
+        risk_ctx = risk_context or {}
+        (
+            decision,
+            reason_code,
+            enforcement_action,
+            risk_result,
+            effective_trace,
+        ) = self._apply_advanced_risk(
+            decision=decision,
+            reason_code=reason_code,
+            enforcement_action=enforcement_action,
+            provenance=provenance,
+            evaluation_trace=evaluation_trace,
+            risk_context=risk_ctx,
+        )
+        final_outcome = "ALLOW"
+        if decision == "block":
+            final_outcome = "BLOCK"
+        elif decision == "annotate":
+            final_outcome = "STEP_UP"
+
+        risk_payload = risk_result.to_dict()
+        risk_payload["applied_outcome"] = final_outcome
+
         payload = {
             "decision": decision,
             "reason_code": reason_code,
@@ -600,21 +789,22 @@ class ExecutionGovernor:
             "provenance": provenance,
             "sink_classification": sink_classification,
             "integrity_level": integrity_level,
-            "evaluation_trace": evaluation_trace,
+            "evaluation_trace": effective_trace,
             "enforcement_action": enforcement_action,
             "vault_token_reference": vault_token_reference,
+            "risk_assessment": risk_payload,
         }
         canonical = str(payload).encode("utf-8")
         seal = self._qseal.seal_result(
             {
                 "proposal_digest": hashlib.sha256(canonical).hexdigest(),
-                "confidence": 1.0,
+                "confidence": risk_result.final_confidence,
                 "trust_level": integrity_level.lower(),
                 "blocked": decision == "block",
                 "engine_used": "mvar-security",
                 "timestamp": datetime.now(timezone.utc).isoformat(),
-                "mode": self.profile_name,
-                "verification_trace": evaluation_trace,
+                "mode": f"{self.profile_name}:{risk_result.mode}",
+                "verification_trace": effective_trace,
             }
         )
         signature = f"{seal.algorithm}:{seal.signature_hex}"
@@ -626,7 +816,8 @@ class ExecutionGovernor:
             engine="mvar-security",
             witness_signature=signature,
             provenance=provenance,
-            evaluation_trace=evaluation_trace,
+            evaluation_trace=effective_trace,
             enforcement_action=enforcement_action,
             vault_token_reference=vault_token_reference,
+            risk_assessment=risk_payload,
         )
