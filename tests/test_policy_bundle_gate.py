@@ -13,10 +13,18 @@ from provenance import ProvenanceGraph, provenance_user_input
 from sink_policy import PolicyOutcome, SinkPolicy, register_common_sinks
 
 
-def _build_policy(bundle_path: str, require_bundle: bool, secret: str, enforce_ed25519: bool = False):
+def _build_policy(
+    bundle_path: str,
+    require_bundle: bool,
+    secret: str,
+    enforce_ed25519: bool = False,
+    auto_bootstrap: bool = True,
+):
     tracked = [
         "MVAR_REQUIRE_SIGNED_POLICY_BUNDLE",
         "MVAR_ENFORCE_ED25519",
+        "MVAR_POLICY_BUNDLE_ENFORCE_ED25519",
+        "MVAR_POLICY_BUNDLE_AUTO_BOOTSTRAP",
         "MVAR_POLICY_BUNDLE_PATH",
         "MVAR_POLICY_BUNDLE_SECRET",
         "MVAR_POLICY_BUNDLE_KEY_DIR",
@@ -28,6 +36,8 @@ def _build_policy(bundle_path: str, require_bundle: bool, secret: str, enforce_e
 
     os.environ["MVAR_REQUIRE_SIGNED_POLICY_BUNDLE"] = "1" if require_bundle else "0"
     os.environ["MVAR_ENFORCE_ED25519"] = "1" if enforce_ed25519 else "0"
+    os.environ["MVAR_POLICY_BUNDLE_ENFORCE_ED25519"] = "1"
+    os.environ["MVAR_POLICY_BUNDLE_AUTO_BOOTSTRAP"] = "1" if auto_bootstrap else "0"
     os.environ["MVAR_POLICY_BUNDLE_PATH"] = bundle_path
     os.environ["MVAR_POLICY_BUNDLE_SECRET"] = secret
     os.environ["MVAR_POLICY_BUNDLE_KEY_DIR"] = str(Path(bundle_path).parent / "bundle_keys")
@@ -79,7 +89,12 @@ def test_signed_policy_bundle_startup_verification_passes(tmp_path: Path):
 
 def test_missing_signed_policy_bundle_blocks_when_required(tmp_path: Path):
     bundle_path = str(tmp_path / "missing_bundle.json")
-    policy, node_id, restore = _build_policy(bundle_path, require_bundle=True, secret="bundle_secret")
+    policy, node_id, restore = _build_policy(
+        bundle_path,
+        require_bundle=True,
+        secret="bundle_secret",
+        auto_bootstrap=False,
+    )
     try:
         decision = policy.evaluate(
             tool="filesystem",

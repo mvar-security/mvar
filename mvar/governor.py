@@ -86,10 +86,23 @@ class ExecutionGovernor:
             os.environ["MVAR_ENFORCE_ED25519"] = "1"
         else:
             os.environ.setdefault("MVAR_ENFORCE_ED25519", "0")
-        # ClawZero integration should not require pre-bundled policy artifacts to boot.
-        os.environ["MVAR_REQUIRE_SIGNED_POLICY_BUNDLE"] = "0"
-        os.environ["MVAR_POLICY_BUNDLE_PATH"] = ""
-        os.environ["MVAR_EXPECTED_POLICY_HASH"] = ""
+        os.environ.setdefault("MVAR_REQUIRE_SIGNED_POLICY_BUNDLE", "1")
+        os.environ.setdefault("MVAR_POLICY_BUNDLE_ENFORCE_ED25519", "1")
+        bundle_root = Path(os.getenv("MVAR_POLICY_BUNDLE_ROOT", str(Path.home() / ".mvar" / "policy_bundles")))
+        try:
+            bundle_root.mkdir(parents=True, exist_ok=True)
+        except (PermissionError, OSError):
+            bundle_root = Path("/tmp/mvar_policy_bundles")
+            bundle_root.mkdir(parents=True, exist_ok=True)
+        os.environ.setdefault(
+            "MVAR_POLICY_BUNDLE_PATH",
+            str(bundle_root / f"{resolved_profile}_policy_bundle.json"),
+        )
+        os.environ.setdefault(
+            "MVAR_POLICY_LINEAGE_PATH",
+            str(bundle_root / f"{resolved_profile}_policy_lineage.jsonl"),
+        )
+        os.environ.setdefault("MVAR_EXPECTED_POLICY_HASH", "")
         self.provenance_graph, self.sink_policy, self.capability_runtime = create_default_runtime(
             profile=self.security_profile,
             enable_qseal=True,

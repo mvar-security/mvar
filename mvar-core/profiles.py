@@ -28,6 +28,7 @@ PROFILE_ENV: Dict[SecurityProfile, Dict[str, str]] = {
     SecurityProfile.STRICT: {
         "MVAR_FAIL_CLOSED": "1",
         "MVAR_ENFORCE_ED25519": "1",
+        "MVAR_POLICY_BUNDLE_ENFORCE_ED25519": "1",
         "MVAR_REQUIRE_EXECUTION_CONTRACT": "1",
         "MVAR_HTTP_DEFAULT_DENY": "1",
         "MVAR_REQUIRE_EXECUTION_TOKEN": "1",
@@ -41,6 +42,7 @@ PROFILE_ENV: Dict[SecurityProfile, Dict[str, str]] = {
     SecurityProfile.BALANCED: {
         "MVAR_FAIL_CLOSED": "1",
         "MVAR_ENFORCE_ED25519": "0",
+        "MVAR_POLICY_BUNDLE_ENFORCE_ED25519": "1",
         "MVAR_REQUIRE_EXECUTION_CONTRACT": "0",
         "MVAR_HTTP_DEFAULT_DENY": "0",
         "MVAR_REQUIRE_EXECUTION_TOKEN": "1",
@@ -49,11 +51,12 @@ PROFILE_ENV: Dict[SecurityProfile, Dict[str, str]] = {
         "MVAR_ENABLE_COMPOSITION_RISK": "1",
         "MVAR_REQUIRE_DECLASSIFY_TOKEN": "1",
         "MVAR_DECLASSIFY_TOKEN_ONE_TIME": "1",
-        "MVAR_REQUIRE_SIGNED_POLICY_BUNDLE": "0",
+        "MVAR_REQUIRE_SIGNED_POLICY_BUNDLE": "1",
     },
     SecurityProfile.MONITOR: {
         "MVAR_FAIL_CLOSED": "1",
         "MVAR_ENFORCE_ED25519": "0",
+        "MVAR_POLICY_BUNDLE_ENFORCE_ED25519": "1",
         "MVAR_REQUIRE_EXECUTION_CONTRACT": "0",
         "MVAR_HTTP_DEFAULT_DENY": "0",
         "MVAR_REQUIRE_EXECUTION_TOKEN": "0",
@@ -62,7 +65,7 @@ PROFILE_ENV: Dict[SecurityProfile, Dict[str, str]] = {
         "MVAR_ENABLE_COMPOSITION_RISK": "1",
         "MVAR_REQUIRE_DECLASSIFY_TOKEN": "0",
         "MVAR_DECLASSIFY_TOKEN_ONE_TIME": "0",
-        "MVAR_REQUIRE_SIGNED_POLICY_BUNDLE": "0",
+        "MVAR_REQUIRE_SIGNED_POLICY_BUNDLE": "1",
     },
 }
 
