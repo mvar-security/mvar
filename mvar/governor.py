@@ -334,6 +334,16 @@ class ExecutionGovernor:
     def get_version(self) -> str:
         return __version__
 
+    def architecture_registry(self) -> dict[str, Any]:
+        from mvar_core.architecture import ArchitectureRegistry
+
+        return ArchitectureRegistry.from_governor(self).architecture_registry()
+
+    def architecture_self_report(self) -> dict[str, Any]:
+        from mvar_core.architecture import ArchitectureRegistry
+
+        return ArchitectureRegistry.from_governor(self).runtime_self_report()
+
     @staticmethod
     def _coerce_score(value: Any, default: float) -> float:
         try:
