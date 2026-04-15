@@ -23,6 +23,27 @@ privileged execution sinks.
 See ClawZero for a 60-second demo of MVAR protecting an OpenClaw agent:
 https://github.com/mvar-security/clawzero
 
+## The mvar-security Stack
+
+MVAR is part of a three-layer AI security infrastructure:
+
+| Layer | Tool | What it secures |
+|-------|------|-----------------|
+| **Runtime** | **MVAR** (this repo) | How information flows through the agent |
+| **Execution** | [ClawZero](https://github.com/mvar-security/clawzero) | What the agent does |
+| **Memory** | [ClawSeal](https://github.com/mvar-security/ClawSeal) | What the agent remembers |
+
+**Integration:**
+- **ClawSeal** uses MVAR's QSEAL cryptographic primitives for tamper-evident memory signing
+- **ClawZero** uses MVAR as its execution enforcement engine
+
+Install the full stack:
+```bash
+pip install mvar-security  # Runtime enforcement
+pip install clawzero       # OpenClaw execution firewall
+pip install clawseal       # Cryptographic memory
+```
+
 ## See It Block an Attack in <60 Seconds
 
 ```bash
