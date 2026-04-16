@@ -48,7 +48,7 @@ pip install clawseal       # Cryptographic memory
 
 ```bash
 python3 -m venv clawzero_demo && source clawzero_demo/bin/activate
-pip install clawzero==0.1.2
+pip install clawzero==0.4.0
 clawzero demo openclaw --mode compare --scenario shell
 ```
 
