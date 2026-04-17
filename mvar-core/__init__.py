@@ -6,10 +6,22 @@ __all__ = [
     "apply_profile",
     "create_default_runtime",
     "profile_summary",
+    "ArchitectureRegistry",
+    "LayerStatus",
+    "RuntimeState",
 ]
 
 
 def __getattr__(name):  # pragma: no cover - simple lazy-export shim
+    if name in {"ArchitectureRegistry", "LayerStatus", "RuntimeState"}:
+        from .architecture import ArchitectureRegistry, LayerStatus, RuntimeState
+
+        exports = {
+            "ArchitectureRegistry": ArchitectureRegistry,
+            "LayerStatus": LayerStatus,
+            "RuntimeState": RuntimeState,
+        }
+        return exports[name]
     if name in __all__:
         from .profiles import SecurityProfile, apply_profile, create_default_runtime, profile_summary
 
