@@ -159,13 +159,13 @@ cryptography==46.0.5 \
     --hash=sha256:f145bba11b878005c496e93e257c1e88f154d278d2638e6450d17e0f31e558d2 \
     --hash=sha256:fe346b143ff9685e40192a4960938545c699054ba11d4f9029f94751e3f71d87
     # via -r requirements-ci.in
-cyclonedx-bom==4.6.1 \
-    --hash=sha256:2fe72daadfd8addd824b235f8ea21ff6045ebe00bbb9da48ec07bfc5a3c39169 \
-    --hash=sha256:39600cb0fe9231285d9f6c234270e23200f9de28d63a2cc2c50d1f6fab75fe1b
+cyclonedx-bom==7.3.0 \
+    --hash=sha256:73d7d76b3a28ebadc50eabf424cbcf128785a74b8a59ce7893da2e29cfaab585 \
+    --hash=sha256:d54080d65731980945de38e52009a5e5711f4a3c31377a3d13af96eaca5fcf3d
     # via -r requirements-ci.in
-cyclonedx-python-lib[validation]==7.6.2 \
-    --hash=sha256:31186c5725ac0cfcca433759a407b1424686cdc867b47cc86e6cf83691310903 \
-    --hash=sha256:c42fab352cc0f7418d1b30def6751d9067ebcf0e8e4be210fc14d6e742a9edcc
+cyclonedx-python-lib[validation]==8.9.0 \
+    --hash=sha256:017b95b334aa83b2d0db8af9764e13a46f0e903bd30a57d93d08dcd302c84032 \
+    --hash=sha256:112c6e6e5290420e32026c49b8391645bf3e646c7602f7bdb5d02c6febbaa073
     # via cyclonedx-bom
 defusedxml==0.7.1 \
     --hash=sha256:1bb3032db185915b62d7c6209c5a8792be6a32ab2fedacc84e01b52c51aa3e69 \
