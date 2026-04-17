@@ -11,6 +11,7 @@ from sink_policy import PolicyOutcome
 _PROFILE_KEYS = {
     "MVAR_FAIL_CLOSED",
     "MVAR_ENFORCE_ED25519",
+    "MVAR_POLICY_BUNDLE_ENFORCE_ED25519",
     "MVAR_REQUIRE_EXECUTION_CONTRACT",
     "MVAR_HTTP_DEFAULT_DENY",
     "MVAR_REQUIRE_EXECUTION_TOKEN",
@@ -40,7 +41,10 @@ def test_profile_summary_contains_expected_keys():
     assert summary["MVAR_REQUIRE_EXECUTION_TOKEN"] == "1"
     assert summary["MVAR_ENABLE_COMPOSITION_RISK"] == "1"
     assert summary["MVAR_ENFORCE_ED25519"] == "1"
+    assert summary["MVAR_POLICY_BUNDLE_ENFORCE_ED25519"] == "1"
     assert summary["MVAR_REQUIRE_SIGNED_POLICY_BUNDLE"] == "1"
+    assert summary["MVAR_ADV_RISK_CONFIDENCE_THRESHOLD_DEV_STRICT"] == "0.58"
+    assert summary["MVAR_ADV_RISK_VOTE_QUORUM_DEV_STRICT"] == "2"
     assert summary["MVAR_REQUIRE_EXECUTION_CONTRACT"] == "1"
     assert summary["MVAR_HTTP_DEFAULT_DENY"] == "1"
 
@@ -63,7 +67,10 @@ def test_apply_profile_strict_enables_enterprise_roots():
     try:
         apply_profile(SecurityProfile.STRICT)
         assert os.environ["MVAR_ENFORCE_ED25519"] == "1"
+        assert os.environ["MVAR_POLICY_BUNDLE_ENFORCE_ED25519"] == "1"
         assert os.environ["MVAR_REQUIRE_SIGNED_POLICY_BUNDLE"] == "1"
+        assert os.environ["MVAR_ADV_RISK_CONFIDENCE_THRESHOLD_DEV_STRICT"] == "0.58"
+        assert os.environ["MVAR_ADV_RISK_VOTE_QUORUM_DEV_STRICT"] == "2"
         assert os.environ["MVAR_REQUIRE_EXECUTION_CONTRACT"] == "1"
         assert os.environ["MVAR_HTTP_DEFAULT_DENY"] == "1"
     finally:
