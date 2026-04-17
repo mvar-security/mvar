@@ -3,6 +3,24 @@
 All notable changes to MVAR are documented here.
 Detailed release notes live under `docs/releases/*`.
 
+## [1.4.3] - 2026-03-16 — ExecutionGovernor + ClawZero Integration Bridge
+- **What's New:** Added ExecutionGovernor with typed `ExecutionDecision` contract and ClawZero integration bridge. Made ExecutionGovernor importable from main module.
+- **Security Impact:** Provides unified execution decision surface for governance layer integration. 293 tests passing.
+- **Validation Snapshot:** Full integration with ClawZero 0.4.0 validated.
+- **Key PRs:** #73 (ExecutionGovernor), #74 (pre-launch polish, cross-linking)
+
+## [1.4.2] - 2026-03-10 — Version Parity Correction
+- **What's New:** Aligned package metadata to match PyPI distribution naming (`mvar-security`).
+- **Security Impact:** No security changes — packaging correction only.
+- **Validation Snapshot:** PyPI publish lane validated, trusted publishing configured.
+- **Key PRs:** #62 (publish as mvar-security), #63 (metadata alignment)
+
+## [1.4.1] - 2026-03-10 — PyPI Lane Bring-Up
+- **What's New:** Added package check, trusted PyPI publish lane, and canonical run-the-proof operator guide.
+- **Security Impact:** Established deterministic PyPI distribution with CI-gated publishing.
+- **Validation Snapshot:** Repro proof pack emits deterministic summary. CHANGELOG and CODE_OF_CONDUCT added to root.
+- **Key PRs:** #56 (repro proof), #58 (CHANGELOG/COC), #60 (run-the-proof guide), #61 (PyPI lane)
+
 ## [1.4.0] - 2026-03-09 — Verified Execution Contracts
 - **What’s New:** Required verified execution contracts for privileged sink calls with invocation-hash binding at enforcement time.
 - **Security Impact:** Eliminates decision/execution drift for contracted sinks and hardens replay/mutation resistance at the sink boundary.
