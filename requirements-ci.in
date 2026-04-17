@@ -5,12 +5,12 @@
 # newer runtimes to latest stable numpy.
 numpy==2.2.6; python_version < "3.11"
 numpy==2.3.3; python_version >= "3.11"
-cryptography==46.0.5
+cryptography==46.0.7
 prometheus-client>=0.20.0,<1.0.0
 opentelemetry-api>=1.24.0,<2.0.0
 opentelemetry-sdk>=1.24.0,<2.0.0
 pytest>=7.4.0,<10.0.0
-cyclonedx-bom<5
+cyclonedx-bom<8
 # Python 3.10 compatibility shims required by pytest/cyclonedx transitive markers.
 exceptiongroup>=1.2.2,<2.0.0; python_version < "3.11"
 tomli>=2.0.1,<3.0.0; python_version < "3.11"
