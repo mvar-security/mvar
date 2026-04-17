@@ -1,4 +1,4 @@
-"""Signed policy bundle utilities for startup integrity verification."""
+"""Signed policy bundle utilities for startup integrity verification and lineage."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ import json
 import os
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 _CRYPTO_AVAILABLE = False
 try:
@@ -38,11 +38,19 @@ def _load_or_create_ed25519_keypair() -> tuple[Any, Any]:
         raise RuntimeError("cryptography package not available for Ed25519 policy bundle signing")
 
     key_dir = _policy_bundle_key_dir()
-    key_dir.mkdir(parents=True, exist_ok=True)
     try:
-        os.chmod(key_dir, 0o700)
-    except OSError:
-        pass
+        key_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            os.chmod(key_dir, 0o700)
+        except OSError:
+            pass
+    except (PermissionError, OSError):
+        key_dir = Path("/tmp/mvar_policy_bundle")
+        key_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            os.chmod(key_dir, 0o700)
+        except OSError:
+            pass
 
     priv_path = key_dir / "policy_bundle_private_key.pem"
     pub_path = key_dir / "policy_bundle_public_key.pem"
@@ -93,21 +101,50 @@ def compute_policy_hash(canonical_payload: Dict[str, Any]) -> str:
     return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
 
 
+def _lineage_node_id(policy_hash: str, issued_at: str, predecessors: List[str], security_context_hash: str) -> str:
+    payload = {
+        "policy_hash": policy_hash,
+        "issued_at": issued_at,
+        "predecessors": sorted([str(item) for item in predecessors]),
+        "security_context_hash": security_context_hash,
+    }
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
 def build_signed_bundle(
     canonical_payload: Dict[str, Any],
     secret: bytes,
     issuer: str = "mvar_policy_bundle",
     *,
-    enforce_ed25519: bool = False,
+    enforce_ed25519: bool = True,
+    predecessor_signatures: Optional[List[str]] = None,
+    predecessor_policy_hashes: Optional[List[str]] = None,
+    security_context: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-    """Create signed policy bundle using HMAC-SHA256 or Ed25519."""
+    """Create signed policy bundle using Ed25519 (default) or HMAC fallback."""
     policy_hash = compute_policy_hash(canonical_payload)
+    issued_at = datetime.now(timezone.utc).isoformat()
+    context = security_context or {}
+    context_hash = hashlib.sha256(
+        json.dumps(context, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
+    ).hexdigest()
+    predecessor_signatures = [str(item) for item in (predecessor_signatures or []) if str(item).strip()]
+    predecessor_policy_hashes = [str(item) for item in (predecessor_policy_hashes or []) if str(item).strip()]
+    node_id = _lineage_node_id(policy_hash, issued_at, predecessor_signatures, context_hash)
     signed_part = {
-        "schema_version": "1.0",
-        "issued_at": datetime.now(timezone.utc).isoformat(),
+        "schema_version": "1.1",
+        "issued_at": issued_at,
         "issuer": issuer,
         "policy_hash": policy_hash,
         "canonical_policy": canonical_payload,
+        "lineage": {
+            "node_id": node_id,
+            "predecessor_signatures": predecessor_signatures,
+            "predecessor_policy_hashes": predecessor_policy_hashes,
+            "security_context_hash": context_hash,
+            "security_context": context,
+        },
     }
     if enforce_ed25519:
         if not _CRYPTO_AVAILABLE:
@@ -136,6 +173,33 @@ def verify_signed_bundle(bundle: Dict[str, Any], secret: bytes, *, enforce_ed255
     if enforce_ed25519 and algorithm != "ed25519":
         return False
     if "signature" not in bundle or "canonical_policy" not in bundle:
+        return False
+    lineage = bundle.get("lineage")
+    if not isinstance(lineage, dict):
+        return False
+    if not isinstance(lineage.get("predecessor_signatures", []), list):
+        return False
+    if not isinstance(lineage.get("predecessor_policy_hashes", []), list):
+        return False
+    if not isinstance(lineage.get("security_context", {}), dict):
+        return False
+    context_hash = hashlib.sha256(
+        json.dumps(
+            lineage.get("security_context", {}),
+            sort_keys=True,
+            separators=(",", ":"),
+            default=str,
+        ).encode("utf-8")
+    ).hexdigest()
+    if str(lineage.get("security_context_hash", "")) != context_hash:
+        return False
+    expected_node_id = _lineage_node_id(
+        str(bundle.get("policy_hash", "")),
+        str(bundle.get("issued_at", "")),
+        [str(item) for item in lineage.get("predecessor_signatures", [])],
+        context_hash,
+    )
+    if str(lineage.get("node_id", "")) != expected_node_id:
         return False
 
     if algorithm == "ed25519":
@@ -168,3 +232,12 @@ def verify_signed_bundle(bundle: Dict[str, Any], secret: bytes, *, enforce_ed255
     if not isinstance(canonical, dict):
         return False
     return str(bundle.get("policy_hash", "")) == compute_policy_hash(canonical)
+
+
+def policy_context_from_bundle(bundle: Dict[str, Any]) -> Dict[str, Any]:
+    """Extract policy creation security context snapshot from a verified bundle."""
+    lineage = bundle.get("lineage")
+    if not isinstance(lineage, dict):
+        return {}
+    context = lineage.get("security_context")
+    return context if isinstance(context, dict) else {}
