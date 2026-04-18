@@ -11,6 +11,8 @@ from typing import Any
 
 import pytest
 
+pytest.importorskip("mirra_core", reason="mirra_core not available in this environment")
+
 from mvar.governor import ExecutionGovernor
 from mvar_core.sink_policy import PolicyOutcome
 
