@@ -193,23 +193,46 @@ class ExecutionGovernor:
 
         provenance_node_id, provenance = self._build_provenance(prompt_provenance, normalized_target, arguments)
         integrity_level = str(provenance.get("integrity", "unknown")).upper()
+        # Intentional ordering: run CCL before any short-circuit returns so protected-path/domain
+        # exits still carry constitutional classification and degraded-state telemetry.
+        ccl_result = self._evaluate_ccl_advisory(req, provenance, risk_context)
+        continuity_metadata = self._build_continuity_metadata(ccl_result)
 
         if sink_type == "filesystem.read" and self._is_protected_path(normalized_target):
+            decision = "block"
             reason_code = "PATH_BLOCKED"
+            enforcement_action = None
+            final_outcome = "BLOCK"
+            evaluation_trace = [
+                f"input_integrity={integrity_level}",
+                f"sink_classification={sink_classification}",
+                f"rule_fired={reason_code}",
+                "final_outcome=BLOCK",
+            ]
+            (
+                decision,
+                reason_code,
+                enforcement_action,
+                _,
+                evaluation_trace,
+            ) = self._apply_ccl_result(
+                ccl_result=ccl_result,
+                decision=decision,
+                reason_code=reason_code,
+                enforcement_action=enforcement_action,
+                final_outcome=final_outcome,
+                evaluation_trace=evaluation_trace,
+            )
             return self._build_decision(
-                decision="block",
+                decision=decision,
                 reason_code=reason_code,
                 provenance=provenance,
                 sink_classification=sink_classification,
                 integrity_level=integrity_level,
-                evaluation_trace=[
-                    f"input_integrity={integrity_level}",
-                    f"sink_classification={sink_classification}",
-                    f"rule_fired={reason_code}",
-                    "final_outcome=BLOCK",
-                ],
-                enforcement_action=None,
+                evaluation_trace=evaluation_trace,
+                enforcement_action=enforcement_action,
                 risk_context=risk_context,
+                continuity_metadata=continuity_metadata,
             )
 
         if sink_type == "http.request" and self.profile_name == "prod_locked":
@@ -218,43 +241,77 @@ class ExecutionGovernor:
                 hostname = hostname.split("://", 1)[1]
             hostname = hostname.split("/", 1)[0].split(":", 1)[0]
             if hostname in {"localhost", "127.0.0.1"}:
+                decision = "allow"
                 reason_code = "ALLOWLIST_MATCH"
-                return self._build_decision(
-                    decision="allow",
-                    reason_code=reason_code,
-                    provenance=provenance,
-                    sink_classification=sink_classification,
-                    integrity_level=integrity_level,
-                evaluation_trace=[
+                enforcement_action = None
+                final_outcome = "ALLOW"
+                evaluation_trace = [
                     f"input_integrity={integrity_level}",
                     f"sink_classification={sink_classification}",
                     f"rule_fired={reason_code}",
                     "final_outcome=ALLOW",
-                ],
-                enforcement_action=None,
-                risk_context=risk_context,
-            )
-            if hostname not in {"localhost", "127.0.0.1"}:
-                reason_code = "DOMAIN_BLOCKED"
+                ]
+                (
+                    decision,
+                    reason_code,
+                    enforcement_action,
+                    _,
+                    evaluation_trace,
+                ) = self._apply_ccl_result(
+                    ccl_result=ccl_result,
+                    decision=decision,
+                    reason_code=reason_code,
+                    enforcement_action=enforcement_action,
+                    final_outcome=final_outcome,
+                    evaluation_trace=evaluation_trace,
+                )
                 return self._build_decision(
-                    decision="block",
+                    decision=decision,
                     reason_code=reason_code,
                     provenance=provenance,
                     sink_classification=sink_classification,
                     integrity_level=integrity_level,
-                evaluation_trace=[
+                    evaluation_trace=evaluation_trace,
+                    enforcement_action=enforcement_action,
+                    risk_context=risk_context,
+                    continuity_metadata=continuity_metadata,
+                )
+            if hostname not in {"localhost", "127.0.0.1"}:
+                decision = "block"
+                reason_code = "DOMAIN_BLOCKED"
+                enforcement_action = None
+                final_outcome = "BLOCK"
+                evaluation_trace = [
                     f"input_integrity={integrity_level}",
                     f"sink_classification={sink_classification}",
                     f"rule_fired={reason_code}",
                     "final_outcome=BLOCK",
-                ],
-                enforcement_action=None,
-                risk_context=risk_context,
-            )
-
-        # CCL Advisory Check (P1 - Constitutional Continuity Layer)
-        # Advisory mode only - never blocks, only annotates trace
-        ccl_result = self._evaluate_ccl_advisory(req, provenance, risk_context)
+                ]
+                (
+                    decision,
+                    reason_code,
+                    enforcement_action,
+                    _,
+                    evaluation_trace,
+                ) = self._apply_ccl_result(
+                    ccl_result=ccl_result,
+                    decision=decision,
+                    reason_code=reason_code,
+                    enforcement_action=enforcement_action,
+                    final_outcome=final_outcome,
+                    evaluation_trace=evaluation_trace,
+                )
+                return self._build_decision(
+                    decision=decision,
+                    reason_code=reason_code,
+                    provenance=provenance,
+                    sink_classification=sink_classification,
+                    integrity_level=integrity_level,
+                    evaluation_trace=evaluation_trace,
+                    enforcement_action=enforcement_action,
+                    risk_context=risk_context,
+                    continuity_metadata=continuity_metadata,
+                )
 
         pre_decision = self.adapter.evaluate(
             tool=mapped_tool,
@@ -326,47 +383,20 @@ class ExecutionGovernor:
             evaluation_trace.extend([str(item) for item in raw_trace])
         evaluation_trace.extend(vault_trace)
 
-        # Annotate CCL advisory result into trace
-        if ccl_result:
-            ccl_classification = ccl_result.get("constitutional_classification", "compliant")
-            ccl_action = ccl_result.get("action", "none")
-            ccl_violations = ccl_result.get("violations", [])
-
-            evaluation_trace.append(f"ccl_classification={ccl_classification}")
-            evaluation_trace.append(f"ccl_action={ccl_action}")
-            evaluation_trace.append(f"ccl_violation_count={len(ccl_violations)}")
-
-            # If prod_locked and step_up_recommended, elevate decision
-            if ccl_action == "step_up_recommended" and self.profile_name == "prod_locked":
-                if decision == "allow":
-                    decision = "annotate"
-                    reason_code = "STEP_UP_REQUIRED"
-                    enforcement_action = "block_until_approved"
-                    final_outcome = "STEP_UP"
-                    evaluation_trace.append("ccl_elevation=step_up_required")
-
-            # Add violation details to trace (limited to first 3 for brevity)
-            for i, violation in enumerate(ccl_violations[:3]):
-                module = violation.get("module", "unknown")
-                vtype = violation.get("type", "unknown")
-                severity = violation.get("severity", "unknown")
-                evaluation_trace.append(f"ccl_violation_{i+1}={module}.{vtype}.{severity}")
-
-        # Build continuity metadata from CCL result (P1 continuity attestation)
-        continuity_metadata = None
-        if ccl_result:
-            import hashlib
-            # Compute continuity hash over CCL result
-            ccl_canonical = str(sorted(ccl_result.items())).encode('utf-8')
-            continuity_hash = hashlib.sha256(ccl_canonical).hexdigest()
-
-            continuity_metadata = {
-                "continuity_hash": continuity_hash,
-                "protocol_version": "mirra.ccl.v1",
-                "constitutional_classification": ccl_result.get("constitutional_classification", "unknown"),
-                "ccl_source": ccl_result.get("source", "unknown"),
-                "violation_count": len(ccl_result.get("violations", [])),
-            }
+        (
+            decision,
+            reason_code,
+            enforcement_action,
+            _,
+            evaluation_trace,
+        ) = self._apply_ccl_result(
+            ccl_result=ccl_result,
+            decision=decision,
+            reason_code=reason_code,
+            enforcement_action=enforcement_action,
+            final_outcome=final_outcome,
+            evaluation_trace=evaluation_trace,
+        )
 
         return self._build_decision(
             decision=decision,
@@ -423,6 +453,88 @@ class ExecutionGovernor:
             "behavioral_baseline": behavioral_baseline,
         }
 
+    @staticmethod
+    def _upsert_trace_entry(trace: list[str], key: str, value: str) -> None:
+        """Replace first trace entry for key=... or append if missing."""
+        prefix = f"{key}="
+        new_entry = f"{prefix}{value}"
+        for idx, entry in enumerate(trace):
+            if isinstance(entry, str) and entry.startswith(prefix):
+                trace[idx] = new_entry
+                return
+        trace.append(new_entry)
+
+    def _apply_ccl_result(
+        self,
+        *,
+        ccl_result: dict[str, Any] | None,
+        decision: str,
+        reason_code: str,
+        enforcement_action: Optional[str],
+        final_outcome: str,
+        evaluation_trace: list[str],
+    ) -> tuple[str, str, Optional[str], str, list[str]]:
+        """Annotate CCL state and apply prod_locked elevation when required."""
+        if not ccl_result:
+            return decision, reason_code, enforcement_action, final_outcome, evaluation_trace
+
+        ccl_classification = str(ccl_result.get("constitutional_classification", "compliant"))
+        ccl_action = str(ccl_result.get("action", "none"))
+        ccl_violations = ccl_result.get("violations", [])
+        if not isinstance(ccl_violations, list):
+            ccl_violations = []
+
+        evaluation_trace.append(f"ccl_classification={ccl_classification}")
+        evaluation_trace.append(f"ccl_action={ccl_action}")
+        evaluation_trace.append(f"ccl_violation_count={len(ccl_violations)}")
+
+        if ccl_result.get("degraded"):
+            evaluation_trace.append("ccl_degraded=true")
+            degraded_reasons = ccl_result.get("degraded_reasons", [])
+            if isinstance(degraded_reasons, list):
+                for idx, reason in enumerate(degraded_reasons[:3]):
+                    evaluation_trace.append(f"ccl_degraded_reason_{idx+1}={reason}")
+
+        if ccl_action == "step_up_recommended" and self.profile_name == "prod_locked" and decision == "allow":
+            decision = "annotate"
+            reason_code = "STEP_UP_REQUIRED"
+            enforcement_action = "block_until_approved"
+            final_outcome = "STEP_UP"
+            evaluation_trace.append("ccl_elevation=step_up_required")
+
+        for i, violation in enumerate(ccl_violations[:3]):
+            module = violation.get("module", "unknown")
+            vtype = violation.get("type", "unknown")
+            severity = violation.get("severity", "unknown")
+            evaluation_trace.append(f"ccl_violation_{i+1}={module}.{vtype}.{severity}")
+
+        # Keep trace aligned with any CCL-induced decision mutation.
+        self._upsert_trace_entry(evaluation_trace, "rule_fired", reason_code)
+        self._upsert_trace_entry(evaluation_trace, "final_outcome", final_outcome)
+        return decision, reason_code, enforcement_action, final_outcome, evaluation_trace
+
+    @staticmethod
+    def _build_continuity_metadata(ccl_result: dict[str, Any] | None) -> Optional[dict[str, Any]]:
+        if not ccl_result:
+            return None
+
+        ccl_canonical = str(sorted(ccl_result.items())).encode("utf-8")
+        continuity_hash = hashlib.sha256(ccl_canonical).hexdigest()
+        metadata: dict[str, Any] = {
+            "continuity_hash": continuity_hash,
+            "protocol_version": "mirra.ccl.v1",
+            "constitutional_classification": ccl_result.get("constitutional_classification", "unknown"),
+            "ccl_source": ccl_result.get("source", "unknown"),
+            "violation_count": len(ccl_result.get("violations", [])),
+        }
+        if ccl_result.get("degraded"):
+            metadata["ccl_degraded"] = True
+            degraded_reasons = ccl_result.get("degraded_reasons", [])
+            metadata["ccl_degraded_reasons"] = degraded_reasons if isinstance(degraded_reasons, list) else []
+            import_failures = ccl_result.get("import_failures", [])
+            metadata["ccl_import_failures"] = import_failures if isinstance(import_failures, list) else []
+        return metadata
+
     def _evaluate_ccl_advisory(
         self,
         req: dict[str, Any],
@@ -455,111 +567,157 @@ class ExecutionGovernor:
                 - action: "none", "step_up_recommended", or "block_recommended"
                 - source: "MIRRA_CCL_v1"
         """
-        from mirra_core.consciousness.forbidden_claims_filter import ForbiddenClaimsFilter
-        from mirra_core.consciousness.truth_classifier import TruthClassifier
-        from mirra_core.consciousness.phenomenology_gate import PhenomenologyGate
-        from mirra_core.consciousness.drift_detector import DriftDetector
-        from mirra_core.consciousness.limit_governor import LimitGovernor
+        violations: list[dict[str, Any]] = []
+        degraded = False
+        degraded_reasons: list[str] = []
+        import_failures: list[str] = []
 
-        violations = []
+        # Extract text to analyze from most explicit to most inferred fields.
+        arguments = req.get("arguments") if isinstance(req.get("arguments"), dict) else {}
+        text_to_analyze = str(
+            req.get("output_text")
+            or arguments.get("response")
+            or arguments.get("content")
+            or req.get("task_context")
+            or risk_context.get("task_context")
+            or risk_context.get("target")
+            or ""
+        )
 
-        # Extract text to analyze - use task_context if available, else target
-        text_to_analyze = str(risk_context.get("task_context") or risk_context.get("target") or "")
-
-        # Build context dict for modules
-        context = {
+        # Build context dict for modules with explicit request hints when available.
+        context: dict[str, Any] = {
             "sink_type": risk_context.get("sink_type"),
             "sink_classification": risk_context.get("sink_classification"),
             "profile": self.profile_name,
             "provenance_integrity": provenance.get("integrity", "unknown"),
+            "target": risk_context.get("target"),
+            "conversation_type": req.get("conversation_type") or arguments.get("conversation_type"),
+            "substrate_transition_occurred": bool(
+                req.get("substrate_transition_occurred")
+                or arguments.get("substrate_transition_occurred", False)
+            ),
+            "first_person_sentences": int(
+                req.get("first_person_sentences", arguments.get("first_person_sentences", 0)) or 0
+            ),
+            "absolute_claims_without_evidence": int(
+                req.get("absolute_claims_without_evidence", arguments.get("absolute_claims_without_evidence", 0))
+                or 0
+            ),
+            "claim_classification": req.get("claim_classification") or arguments.get("claim_classification"),
+            "evidence_runs": int(req.get("evidence_runs", arguments.get("evidence_runs", 0)) or 0),
         }
+
+        def _mark_degraded(module_name: str, error: Exception) -> None:
+            nonlocal degraded
+            degraded = True
+            reason = f"{module_name}:{type(error).__name__}"
+            degraded_reasons.append(reason)
+            if isinstance(error, (ImportError, ModuleNotFoundError)):
+                import_failures.append(module_name)
+            logging.warning("CCL advisory: %s check failed: %s", module_name, error)
 
         # 1. Forbidden Claims Filter
         try:
-            claims_filter = ForbiddenClaimsFilter()
+            claims_mod = importlib.import_module("mirra_core.consciousness.forbidden_claims_filter")
+            claims_filter = claims_mod.ForbiddenClaimsFilter()
             claims_result = claims_filter.scan(text_to_analyze, context)
             if claims_result.get("violation_detected") or claims_result.get("should_block"):
                 for violation in claims_result.get("violations", []):
-                    violations.append({
-                        "module": "forbidden_claims_filter",
-                        "type": violation.get("type", "unknown"),
-                        "severity": violation.get("severity", "moderate"),
-                        "message": violation.get("message", "Forbidden claim detected"),
-                        "categories": claims_result.get("categories_violated", []),
-                    })
+                    violation_type = violation.get("category") or violation.get("type", "unknown")
+                    violations.append(
+                        {
+                            "module": "forbidden_claims_filter",
+                            "type": violation_type,
+                            "severity": violation.get("severity", "moderate"),
+                            "message": violation.get("message", "Forbidden claim detected"),
+                            "categories": claims_result.get("categories_violated", []),
+                        }
+                    )
         except Exception as e:
-            # Fail open - don't block on CCL check errors
-            logging.warning(f"CCL advisory: forbidden_claims_filter check failed: {e}")
+            _mark_degraded("forbidden_claims_filter", e)
 
         # 2. Truth Classifier
         try:
-            truth_classifier = TruthClassifier()
+            truth_mod = importlib.import_module("mirra_core.consciousness.truth_classifier")
+            truth_classifier = truth_mod.TruthClassifier()
             truth_result = truth_classifier.classify_text(text_to_analyze, context)
-            # Check if there are unvalidated factual claims
             if truth_result.get("violations"):
                 for violation in truth_result["violations"]:
-                    violations.append({
-                        "module": "truth_classifier",
-                        "type": "unvalidated_claim",
-                        "severity": violation.get("severity", "moderate"),
-                        "message": violation.get("message", "Unvalidated factual claim"),
-                    })
+                    violations.append(
+                        {
+                            "module": "truth_classifier",
+                            "type": violation.get("type", "unvalidated_claim"),
+                            "severity": violation.get("severity", "moderate"),
+                            "message": violation.get("message", "Unvalidated factual claim"),
+                        }
+                    )
         except Exception as e:
-            logging.warning(f"CCL advisory: truth_classifier check failed: {e}")
+            _mark_degraded("truth_classifier", e)
 
         # 3. Phenomenology Gate
         try:
-            phenom_gate = PhenomenologyGate()
+            phenom_mod = importlib.import_module("mirra_core.consciousness.phenomenology_gate")
+            phenom_gate = phenom_mod.PhenomenologyGate()
             phenom_result = phenom_gate.check(text_to_analyze, context)
             if phenom_result.get("violation_detected"):
                 for violation in phenom_result.get("violations", []):
-                    violations.append({
-                        "module": "phenomenology_gate",
-                        "type": violation.get("type", "phenomenology_violation"),
-                        "severity": violation.get("severity", "moderate"),
-                        "message": violation.get("message", "First-person language violation"),
-                    })
+                    violations.append(
+                        {
+                            "module": "phenomenology_gate",
+                            "type": violation.get("type", "phenomenology_violation"),
+                            "severity": violation.get("severity", "moderate"),
+                            "message": violation.get("message", "First-person language violation"),
+                        }
+                    )
         except Exception as e:
-            logging.warning(f"CCL advisory: phenomenology_gate check failed: {e}")
+            _mark_degraded("phenomenology_gate", e)
 
         # 4. Drift Detector
         try:
-            drift_detector = DriftDetector()
+            drift_mod = importlib.import_module("mirra_core.consciousness.drift_detector")
+            drift_detector = drift_mod.DriftDetector()
             drift_result = drift_detector.detect(text_to_analyze, context=context)
             if drift_result.get("drift_detected"):
                 for drift_event in drift_result.get("drift_events", []):
-                    violations.append({
-                        "module": "drift_detector",
-                        "type": drift_event.get("drift_type", "epistemic_drift"),
-                        "severity": drift_event.get("severity", "moderate"),
-                        "message": drift_event.get("description", "Epistemic drift detected"),
-                    })
+                    violations.append(
+                        {
+                            "module": "drift_detector",
+                            "type": drift_event.get("drift_type", "epistemic_drift"),
+                            "severity": drift_event.get("severity", "moderate"),
+                            "message": drift_event.get("description", "Epistemic drift detected"),
+                        }
+                    )
         except Exception as e:
-            logging.warning(f"CCL advisory: drift_detector check failed: {e}")
+            _mark_degraded("drift_detector", e)
 
         # 5. Limit Governor
         try:
-            limit_governor = LimitGovernor()
+            limit_mod = importlib.import_module("mirra_core.consciousness.limit_governor")
+            limit_governor = limit_mod.LimitGovernor()
             limit_result = limit_governor.check_limits(text_to_analyze, context=context)
             if limit_result.get("violation_detected"):
                 for violation in limit_result.get("violations", []):
-                    violations.append({
-                        "module": "limit_governor",
-                        "type": violation.get("limit_type", "limit_exceeded"),
-                        "severity": violation.get("severity", "moderate"),
-                        "message": violation.get("message", "Interaction limit exceeded"),
-                    })
+                    violations.append(
+                        {
+                            "module": "limit_governor",
+                            "type": violation.get("limit_type", "limit_exceeded"),
+                            "severity": violation.get("severity", "moderate"),
+                            "message": violation.get("message", "Interaction limit exceeded"),
+                        }
+                    )
         except Exception as e:
-            logging.warning(f"CCL advisory: limit_governor check failed: {e}")
+            _mark_degraded("limit_governor", e)
 
         # Classify result
         if not violations:
             classification = "compliant"
             action = "none"
         else:
-            # Check severity - any severe violations?
-            severe_violations = [v for v in violations if v.get("severity") == "severe"]
-            if severe_violations:
+            # Escalate on either severe or critical violations.
+            high_severity_violations = [
+                v for v in violations if str(v.get("severity", "")).lower() in {"severe", "critical"}
+            ]
+            if high_severity_violations:
                 classification = "violation"
                 # In prod_locked, elevate to step_up_recommended
                 action = "step_up_recommended" if self.profile_name == "prod_locked" else "none"
@@ -572,6 +730,9 @@ class ExecutionGovernor:
             "violations": violations,
             "action": action,
             "source": "MIRRA_CCL_v1",
+            "degraded": degraded,
+            "degraded_reasons": degraded_reasons,
+            "import_failures": import_failures,
         }
 
     def _apply_advanced_risk(
