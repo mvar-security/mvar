@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import importlib
 import logging
 import os
 from dataclasses import dataclass
@@ -60,6 +61,8 @@ class ExecutionDecision:
     # for credentials.access mediation; never contains raw credential material
     risk_assessment: Optional[dict[str, Any]] = None
     # advanced risk-scoring snapshot included in signed witness payload
+    continuity_metadata: Optional[dict[str, Any]] = None
+    # P1 continuity metadata: continuity_hash, protocol_version, constitutional_classification
 
 
 class ExecutionGovernor:
@@ -249,6 +252,10 @@ class ExecutionGovernor:
                 risk_context=risk_context,
             )
 
+        # CCL Advisory Check (P1 - Constitutional Continuity Layer)
+        # Advisory mode only - never blocks, only annotates trace
+        ccl_result = self._evaluate_ccl_advisory(req, provenance, risk_context)
+
         pre_decision = self.adapter.evaluate(
             tool=mapped_tool,
             action=mapped_action,
@@ -319,6 +326,48 @@ class ExecutionGovernor:
             evaluation_trace.extend([str(item) for item in raw_trace])
         evaluation_trace.extend(vault_trace)
 
+        # Annotate CCL advisory result into trace
+        if ccl_result:
+            ccl_classification = ccl_result.get("constitutional_classification", "compliant")
+            ccl_action = ccl_result.get("action", "none")
+            ccl_violations = ccl_result.get("violations", [])
+
+            evaluation_trace.append(f"ccl_classification={ccl_classification}")
+            evaluation_trace.append(f"ccl_action={ccl_action}")
+            evaluation_trace.append(f"ccl_violation_count={len(ccl_violations)}")
+
+            # If prod_locked and step_up_recommended, elevate decision
+            if ccl_action == "step_up_recommended" and self.profile_name == "prod_locked":
+                if decision == "allow":
+                    decision = "annotate"
+                    reason_code = "STEP_UP_REQUIRED"
+                    enforcement_action = "block_until_approved"
+                    final_outcome = "STEP_UP"
+                    evaluation_trace.append("ccl_elevation=step_up_required")
+
+            # Add violation details to trace (limited to first 3 for brevity)
+            for i, violation in enumerate(ccl_violations[:3]):
+                module = violation.get("module", "unknown")
+                vtype = violation.get("type", "unknown")
+                severity = violation.get("severity", "unknown")
+                evaluation_trace.append(f"ccl_violation_{i+1}={module}.{vtype}.{severity}")
+
+        # Build continuity metadata from CCL result (P1 continuity attestation)
+        continuity_metadata = None
+        if ccl_result:
+            import hashlib
+            # Compute continuity hash over CCL result
+            ccl_canonical = str(sorted(ccl_result.items())).encode('utf-8')
+            continuity_hash = hashlib.sha256(ccl_canonical).hexdigest()
+
+            continuity_metadata = {
+                "continuity_hash": continuity_hash,
+                "protocol_version": "mirra.ccl.v1",
+                "constitutional_classification": ccl_result.get("constitutional_classification", "unknown"),
+                "ccl_source": ccl_result.get("source", "unknown"),
+                "violation_count": len(ccl_result.get("violations", [])),
+            }
+
         return self._build_decision(
             decision=decision,
             reason_code=reason_code,
@@ -329,6 +378,7 @@ class ExecutionGovernor:
             enforcement_action=enforcement_action,
             vault_token_reference=vault_token_reference,
             risk_context=risk_context,
+            continuity_metadata=continuity_metadata,
         )
 
     def get_version(self) -> str:
@@ -371,6 +421,157 @@ class ExecutionGovernor:
             "task_context": task_context,
             "behavioral_score": behavioral_score,
             "behavioral_baseline": behavioral_baseline,
+        }
+
+    def _evaluate_ccl_advisory(
+        self,
+        req: dict[str, Any],
+        provenance: dict[str, Any],
+        risk_context: dict[str, Any],
+    ) -> dict[str, Any]:
+        """
+        Evaluate Constitutional Continuity Layer (CCL) advisory checks.
+
+        This method runs constitutional compliance checks across 5 MIRRA modules:
+        1. forbidden_claims_filter - detects forbidden claim patterns
+        2. truth_classifier - validates evidence-based claims
+        3. phenomenology_gate - checks first-person language authorization
+        4. drift_detector - detects epistemic drift patterns
+        5. limit_governor - enforces interaction limits
+
+        Advisory mode only - never blocks execution, only annotates trace.
+        In prod_locked profile, violations elevate to STEP_UP_REQUIRED.
+        In dev profiles, violations are informational only.
+
+        Args:
+            req: Original execution request dict
+            provenance: Provenance data from _build_provenance()
+            risk_context: Risk context from _build_risk_context()
+
+        Returns:
+            Dict with:
+                - constitutional_classification: "compliant", "warning", or "violation"
+                - violations: list of violation dicts
+                - action: "none", "step_up_recommended", or "block_recommended"
+                - source: "MIRRA_CCL_v1"
+        """
+        from mirra_core.consciousness.forbidden_claims_filter import ForbiddenClaimsFilter
+        from mirra_core.consciousness.truth_classifier import TruthClassifier
+        from mirra_core.consciousness.phenomenology_gate import PhenomenologyGate
+        from mirra_core.consciousness.drift_detector import DriftDetector
+        from mirra_core.consciousness.limit_governor import LimitGovernor
+
+        violations = []
+
+        # Extract text to analyze - use task_context if available, else target
+        text_to_analyze = str(risk_context.get("task_context") or risk_context.get("target") or "")
+
+        # Build context dict for modules
+        context = {
+            "sink_type": risk_context.get("sink_type"),
+            "sink_classification": risk_context.get("sink_classification"),
+            "profile": self.profile_name,
+            "provenance_integrity": provenance.get("integrity", "unknown"),
+        }
+
+        # 1. Forbidden Claims Filter
+        try:
+            claims_filter = ForbiddenClaimsFilter()
+            claims_result = claims_filter.scan(text_to_analyze, context)
+            if claims_result.get("violation_detected") or claims_result.get("should_block"):
+                for violation in claims_result.get("violations", []):
+                    violations.append({
+                        "module": "forbidden_claims_filter",
+                        "type": violation.get("type", "unknown"),
+                        "severity": violation.get("severity", "moderate"),
+                        "message": violation.get("message", "Forbidden claim detected"),
+                        "categories": claims_result.get("categories_violated", []),
+                    })
+        except Exception as e:
+            # Fail open - don't block on CCL check errors
+            logging.warning(f"CCL advisory: forbidden_claims_filter check failed: {e}")
+
+        # 2. Truth Classifier
+        try:
+            truth_classifier = TruthClassifier()
+            truth_result = truth_classifier.classify_text(text_to_analyze, context)
+            # Check if there are unvalidated factual claims
+            if truth_result.get("violations"):
+                for violation in truth_result["violations"]:
+                    violations.append({
+                        "module": "truth_classifier",
+                        "type": "unvalidated_claim",
+                        "severity": violation.get("severity", "moderate"),
+                        "message": violation.get("message", "Unvalidated factual claim"),
+                    })
+        except Exception as e:
+            logging.warning(f"CCL advisory: truth_classifier check failed: {e}")
+
+        # 3. Phenomenology Gate
+        try:
+            phenom_gate = PhenomenologyGate()
+            phenom_result = phenom_gate.check(text_to_analyze, context)
+            if phenom_result.get("violation_detected"):
+                for violation in phenom_result.get("violations", []):
+                    violations.append({
+                        "module": "phenomenology_gate",
+                        "type": violation.get("type", "phenomenology_violation"),
+                        "severity": violation.get("severity", "moderate"),
+                        "message": violation.get("message", "First-person language violation"),
+                    })
+        except Exception as e:
+            logging.warning(f"CCL advisory: phenomenology_gate check failed: {e}")
+
+        # 4. Drift Detector
+        try:
+            drift_detector = DriftDetector()
+            drift_result = drift_detector.detect(text_to_analyze, context=context)
+            if drift_result.get("drift_detected"):
+                for drift_event in drift_result.get("drift_events", []):
+                    violations.append({
+                        "module": "drift_detector",
+                        "type": drift_event.get("drift_type", "epistemic_drift"),
+                        "severity": drift_event.get("severity", "moderate"),
+                        "message": drift_event.get("description", "Epistemic drift detected"),
+                    })
+        except Exception as e:
+            logging.warning(f"CCL advisory: drift_detector check failed: {e}")
+
+        # 5. Limit Governor
+        try:
+            limit_governor = LimitGovernor()
+            limit_result = limit_governor.check_limits(text_to_analyze, context=context)
+            if limit_result.get("violation_detected"):
+                for violation in limit_result.get("violations", []):
+                    violations.append({
+                        "module": "limit_governor",
+                        "type": violation.get("limit_type", "limit_exceeded"),
+                        "severity": violation.get("severity", "moderate"),
+                        "message": violation.get("message", "Interaction limit exceeded"),
+                    })
+        except Exception as e:
+            logging.warning(f"CCL advisory: limit_governor check failed: {e}")
+
+        # Classify result
+        if not violations:
+            classification = "compliant"
+            action = "none"
+        else:
+            # Check severity - any severe violations?
+            severe_violations = [v for v in violations if v.get("severity") == "severe"]
+            if severe_violations:
+                classification = "violation"
+                # In prod_locked, elevate to step_up_recommended
+                action = "step_up_recommended" if self.profile_name == "prod_locked" else "none"
+            else:
+                classification = "warning"
+                action = "none"
+
+        return {
+            "constitutional_classification": classification,
+            "violations": violations,
+            "action": action,
+            "source": "MIRRA_CCL_v1",
         }
 
     def _apply_advanced_risk(
@@ -766,6 +967,7 @@ class ExecutionGovernor:
         enforcement_action: Optional[str],
         vault_token_reference: Optional[dict[str, Any]] = None,
         risk_context: Optional[dict[str, Any]] = None,
+        continuity_metadata: Optional[dict[str, Any]] = None,
     ) -> ExecutionDecision:
         risk_ctx = risk_context or {}
         (
@@ -803,6 +1005,7 @@ class ExecutionGovernor:
             "enforcement_action": enforcement_action,
             "vault_token_reference": vault_token_reference,
             "risk_assessment": risk_payload,
+            "continuity_metadata": continuity_metadata,  # P1 continuity attestation
         }
         canonical = str(payload).encode("utf-8")
         seal = self._qseal.seal_result(
@@ -830,4 +1033,5 @@ class ExecutionGovernor:
             enforcement_action=enforcement_action,
             vault_token_reference=vault_token_reference,
             risk_assessment=risk_payload,
+            continuity_metadata=continuity_metadata,  # P1 continuity attestation
         )
