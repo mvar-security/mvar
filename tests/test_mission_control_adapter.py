@@ -1,0 +1,371 @@
+"""
+Tests for Mission Control Adapter
+===================================
+
+Unit tests (mocked HTTP) + integration test (requires running MC instance).
+"""
+
+import os
+import pytest
+from unittest.mock import AsyncMock, patch, MagicMock
+
+# Skip all tests if httpx not installed
+httpx = pytest.importorskip("httpx")
+
+from mvar.adapters import MVARAdapter
+from mvar.adapters.types import (
+    AgentRegistrationResponse,
+    HeartbeatResponse,
+    TaskCreateResponse,
+)
+
+
+# ============================================================================
+# Unit Tests (Mocked HTTP)
+# ============================================================================
+
+
+@pytest.fixture
+def mock_qseal():
+    """Mock QSEALEngine for testing."""
+    with patch("mvar.adapters.mission_control_adapter.QSEALEngine") as mock:
+        mock_instance = MagicMock()
+        mock_instance.sign_entry.return_value = {
+            "qseal_signature": "mock_signature_hex",
+            "meta_hash": "mock_meta_hash",
+        }
+        mock.return_value = mock_instance
+        yield mock_instance
+
+
+@pytest.fixture
+async def adapter(mock_qseal):
+    """Create adapter with mocked QSEAL."""
+    os.environ["QSEAL_SECRET"] = "test_secret"
+    adapter = MVARAdapter(
+        mission_control_url="http://test.local:3000",
+        agent_id="test-agent",
+    )
+    yield adapter
+    await adapter.close()
+
+
+@pytest.mark.asyncio
+async def test_register_sends_correct_payload(adapter, mock_qseal):
+    """Test register() sends correct payload to POST /api/agents/register."""
+    mock_response = {
+        "agent": {"id": 1, "name": "test-agent", "role": "agent"},
+        "registered": True,
+        "message": "Agent registered successfully",
+    }
+
+    with patch.object(adapter.session, "post", new_callable=AsyncMock) as mock_post:
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = mock_response
+        mock_resp.raise_for_status = MagicMock()
+        mock_post.return_value = mock_resp
+
+        result = await adapter.register("test-agent", role="agent", capabilities=["mvar"])
+
+        # Verify POST call
+        mock_post.assert_called_once()
+        call_args = mock_post.call_args
+        assert call_args[0][0] == "http://test.local:3000/api/agents/register"
+
+        # Verify payload
+        payload = call_args.kwargs["json"]
+        assert payload["name"] == "test-agent"
+        assert payload["role"] == "agent"
+        assert payload["framework"] == "mvar"
+        assert payload["capabilities"] == ["mvar"]
+
+        # Verify headers
+        headers = call_args.kwargs["headers"]
+        assert headers["X-MVAR-Agent-ID"] == "test-agent"
+        assert headers["X-MVAR-Protocol-Version"] == "v1"
+
+        # Verify response
+        assert result["registered"] is True
+        assert result["message"] == "Agent registered successfully"
+
+
+@pytest.mark.asyncio
+async def test_heartbeat_sends_mvar_metrics(adapter, mock_qseal):
+    """Test heartbeat() includes MVAR metrics in payload."""
+    mock_response: HeartbeatResponse = {
+        "status": "HEARTBEAT_OK",
+        "agent": "test-agent",
+        "checked_at": 1234567890,
+        "work_items": [],
+        "total_items": 0,
+        "token_recorded": False,
+    }
+
+    with patch.object(adapter.session, "post", new_callable=AsyncMock) as mock_post:
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = mock_response
+        mock_resp.raise_for_status = MagicMock()
+        mock_post.return_value = mock_resp
+
+        result = await adapter.heartbeat(
+            mvar_metrics={"policy_checks": 42, "violations": 0}
+        )
+
+        # Verify payload includes MVAR metrics
+        payload = mock_post.call_args.kwargs["json"]
+        assert "mvar_metrics" in payload
+        assert payload["mvar_metrics"]["policy_checks"] == 42
+
+        # Verify response
+        assert result["status"] == "HEARTBEAT_OK"
+
+
+@pytest.mark.asyncio
+async def test_report_task_signs_policy_outcome(adapter, mock_qseal):
+    """Test report_task() signs policy outcome with QSEAL."""
+    mock_response: TaskCreateResponse = {
+        "task": {
+            "id": 123,
+            "title": "Task 999 completion",
+            "status": "done",
+            "priority": "medium",
+            "assigned_to": "test-agent",
+            "created_at": 1234567890,
+            "updated_at": 1234567890,
+            "metadata": {},
+            "tags": ["mvar", "policy-outcome"],
+            "ticket_ref": "TEST-001",
+        }
+    }
+
+    with patch.object(adapter.session, "post", new_callable=AsyncMock) as mock_post:
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = mock_response
+        mock_resp.raise_for_status = MagicMock()
+        mock_post.return_value = mock_resp
+
+        policy_outcome = {
+            "decision": "allow",
+            "violations": [],
+            "protocol_version": "mirra.ccl.v1",
+            "timestamp": 1234567890,
+        }
+
+        result = await adapter.report_task(
+            task_id=999,
+            status="done",
+            policy_outcome=policy_outcome,
+        )
+
+        # Verify QSEAL signing was called
+        mock_qseal.sign_entry.assert_called_once_with(policy_outcome)
+
+        # Verify payload includes signed metadata
+        payload = mock_post.call_args.kwargs["json"]
+        assert "metadata" in payload
+        assert "mvar_policy_outcome" in payload["metadata"]
+        assert "qseal_signature" in payload["metadata"]
+        assert payload["metadata"]["qseal_signature"] == "mock_signature_hex"
+        assert payload["metadata"]["qseal_meta_hash"] == "mock_meta_hash"
+
+        # Verify task fields
+        assert payload["title"] == "Task 999 completion"
+        assert payload["status"] == "done"
+        assert payload["outcome"] == "success"
+        assert payload["assigned_to"] == "test-agent"
+        assert "mvar" in payload["tags"]
+
+
+@pytest.mark.asyncio
+async def test_report_task_includes_witness(adapter, mock_qseal):
+    """Test report_task() includes ClawZero witness in metadata."""
+    mock_response: TaskCreateResponse = {
+        "task": {
+            "id": 124,
+            "title": "Task with witness",
+            "status": "done",
+            "priority": "medium",
+            "assigned_to": "test-agent",
+            "created_at": 1234567890,
+            "updated_at": 1234567890,
+            "metadata": {},
+            "tags": [],
+            "ticket_ref": None,
+        }
+    }
+
+    with patch.object(adapter.session, "post", new_callable=AsyncMock) as mock_post:
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = mock_response
+        mock_resp.raise_for_status = MagicMock()
+        mock_post.return_value = mock_resp
+
+        witness = {
+            "execution_id": "exec-123",
+            "content_hash": "abc123",
+            "continuity": {"continuity_hash": "def456"},
+        }
+
+        await adapter.report_task(
+            task_id=124,
+            status="done",
+            policy_outcome={"decision": "allow", "violations": []},
+            witness=witness,
+        )
+
+        # Verify witness in metadata
+        payload = mock_post.call_args.kwargs["json"]
+        assert "clawzero_witness" in payload["metadata"]
+        assert payload["metadata"]["clawzero_witness"]["execution_id"] == "exec-123"
+
+
+@pytest.mark.asyncio
+async def test_get_assignments_queries_correct_endpoint(adapter, mock_qseal):
+    """Test get_assignments() queries GET /api/tasks with correct params."""
+    mock_response = {
+        "tasks": [
+            {"id": 1, "title": "Task 1", "status": "assigned"},
+            {"id": 2, "title": "Task 2", "status": "assigned"},
+        ],
+        "total": 2,
+        "page": 1,
+        "limit": 50,
+    }
+
+    with patch.object(adapter.session, "get", new_callable=AsyncMock) as mock_get:
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = mock_response
+        mock_resp.raise_for_status = MagicMock()
+        mock_get.return_value = mock_resp
+
+        result = await adapter.get_assignments(status="assigned", limit=50)
+
+        # Verify GET call
+        mock_get.assert_called_once()
+        call_args = mock_get.call_args
+        assert call_args[0][0] == "http://test.local:3000/api/tasks"
+
+        # Verify query params
+        params = call_args.kwargs["params"]
+        assert params["assigned_to"] == "test-agent"
+        assert params["status"] == "assigned"
+        assert params["limit"] == 50
+
+        # Verify result
+        assert len(result) == 2
+        assert result[0]["id"] == 1
+
+
+@pytest.mark.asyncio
+async def test_adapter_context_manager(mock_qseal):
+    """Test adapter works as async context manager."""
+    os.environ["QSEAL_SECRET"] = "test_secret"
+
+    async with MVARAdapter(agent_id="ctx-test") as adapter:
+        assert adapter.agent_id == "ctx-test"
+        assert adapter.session is not None
+
+    # Session should be closed after context exit
+    # (httpx.AsyncClient.aclose() doesn't raise on double-close, so we just verify no crash)
+
+
+def test_adapter_requires_qseal_secret(mock_qseal):
+    """Test adapter raises ValueError if QSEAL_SECRET not provided."""
+    # Clear env var
+    os.environ.pop("QSEAL_SECRET", None)
+
+    with pytest.raises(ValueError, match="QSEAL_SECRET must be provided"):
+        MVARAdapter(agent_id="test")
+
+
+# ============================================================================
+# Integration Test (Requires Running Mission Control)
+# ============================================================================
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_full_adapter_flow_against_live_mc():
+    """
+    End-to-end integration test against a running Mission Control instance.
+
+    Requires:
+    - Mission Control running at http://127.0.0.1:3000
+    - QSEAL_SECRET=test_secret_for_integration_testing
+    - Mission Control configured with viewer/operator auth
+
+    Test flow:
+    1. Register agent
+    2. Send heartbeat
+    3. Report task completion
+    4. Fetch assignments
+    """
+    # Skip if Mission Control not available
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get("http://127.0.0.1:3000", timeout=2.0)
+            if resp.status_code not in (200, 302):
+                pytest.skip("Mission Control not running at http://127.0.0.1:3000")
+    except (httpx.ConnectError, httpx.TimeoutException):
+        pytest.skip("Mission Control not running at http://127.0.0.1:3000")
+
+    os.environ["QSEAL_SECRET"] = "test_secret_for_integration_testing"
+
+    async with MVARAdapter(
+        mission_control_url="http://127.0.0.1:3000",
+        agent_id="mvar-integration-test",
+    ) as adapter:
+        # 1. Register
+        reg_result = await adapter.register(
+            "mvar-integration-test",
+            role="agent",
+            capabilities=["mvar-policy", "qseal-signing"],
+        )
+        assert "agent" in reg_result
+        assert reg_result["message"] in [
+            "Agent registered successfully",
+            "Agent already registered, status updated",
+        ]
+
+        # 2. Heartbeat
+        hb_result = await adapter.heartbeat(
+            mvar_metrics={"policy_checks": 10, "violations": 0}
+        )
+        assert hb_result["status"] in ["HEARTBEAT_OK", "WORK_ITEMS_FOUND"]
+        assert hb_result["agent"] == "mvar-integration-test"
+
+        # 3. Report task
+        task_result = await adapter.report_task(
+            task_id=9999,
+            status="done",
+            policy_outcome={
+                "decision": "allow",
+                "violations": [],
+                "protocol_version": "mirra.ccl.v1",
+                "timestamp": int(os.environ.get("TIMESTAMP", "1234567890")),
+            },
+        )
+        assert "task" in task_result
+        assert task_result["task"]["metadata"]["qseal_verified"] is True
+
+        # 4. Get assignments
+        assignments = await adapter.get_assignments()
+        assert isinstance(assignments, list)
+        # May be empty if no tasks assigned, that's OK
+
+
+# ============================================================================
+# Helpers
+# ============================================================================
+
+
+def test_mvar_headers(mock_qseal):
+    """Test _mvar_headers() generates correct headers."""
+    os.environ["QSEAL_SECRET"] = "test_secret"
+    adapter = MVARAdapter(agent_id="header-test")
+
+    headers = adapter._mvar_headers()
+
+    assert headers["Content-Type"] == "application/json"
+    assert headers["X-MVAR-Agent-ID"] == "header-test"
+    assert headers["X-MVAR-Protocol-Version"] == "v1"
