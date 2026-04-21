@@ -536,6 +536,9 @@ def test_hook(command: str = 'echo hello', scope: str = 'project') -> Dict[str, 
             for line in f:
                 line = line.strip()
                 if line and not line.startswith('#') and '=' in line:
+                    # Strip 'export ' prefix if present
+                    if line.startswith('export '):
+                        line = line[7:]  # Remove 'export '
                     key, value = line.split('=', 1)
                     env[key.strip()] = value.strip()
 

@@ -1,18 +1,17 @@
 #!/usr/bin/env python3
 """
-MVAR CLI — Command-line interface for mvar-security 1.5.1
+MVAR CLI — Command-line interface for mvar-security 1.5.2
 ==========================================================
 
 Usage:
     mvar init --framework <name>
-    mvar test --framework <name>
     mvar policy list
     mvar policy add <rule_file>
     mvar mission-control setup
     mvar info
     mvar --version
 
-Frameworks: claude-code, crewai, langchain, autogen, mcp
+Frameworks: claude-code (others deferred to 1.6.0)
 """
 
 import sys
@@ -35,17 +34,8 @@ def main() -> int:
     init_parser.add_argument(
         "--framework",
         required=True,
-        choices=["claude-code", "crewai", "langchain", "autogen", "mcp"],
-        help="Framework to configure",
-    )
-
-    # mvar test --framework <name>
-    test_parser = subparsers.add_parser("test", help="Run framework-specific test")
-    test_parser.add_argument(
-        "--framework",
-        required=True,
-        choices=["claude-code", "crewai", "langchain", "autogen", "mcp"],
-        help="Framework to test",
+        choices=["claude-code"],
+        help="Framework to configure (only claude-code currently supported)",
     )
 
     # mvar policy list/add
@@ -71,8 +61,6 @@ def main() -> int:
 
     if args.command == "init":
         return cmd_init(args.framework)
-    elif args.command == "test":
-        return cmd_test(args.framework)
     elif args.command == "policy":
         if args.policy_command == "list":
             return cmd_policy_list()
@@ -94,7 +82,7 @@ def print_version():
     """Print version information."""
     print("=" * 70)
     print("  MVAR — MIRRA Verified Agent Runtime")
-    print("  Version 1.5.1")
+    print("  Version 1.5.2")
     print("=" * 70)
     print()
     print("Author: Shawn Cohen")
@@ -127,14 +115,6 @@ def cmd_init(framework: str) -> int:
         print(f"[mvar init] Initializing {framework}...")
         print(f"ERROR: Not yet implemented for {framework}")
         return 1
-
-
-def cmd_test(framework: str) -> int:
-    """Run framework-specific test."""
-    print(f"[mvar test] Testing {framework} integration...")
-    # TODO: Implement framework-specific test
-    print(f"ERROR: Not yet implemented for {framework}")
-    return 1
 
 
 def cmd_policy_list() -> int:

@@ -3,6 +3,25 @@
 All notable changes to MVAR are documented here.
 Detailed release notes live under `docs/releases/*`.
 
+## [1.5.2] - 2026-04-21 — Security Update (CVE Fix + CLI Scoping)
+
+**⚠️ Critical: Published 1.5.1 package contained cryptography==46.0.5 with 2 CVEs. This release updates to cryptography==46.0.7.**
+
+### Security
+- **Updated cryptography dependency to 46.0.7** (fixes CVEs in 46.0.5)
+
+### Fixed
+- **CLI scoping:** Removed unimplemented `mvar test` command; limited `--framework` choices to `claude-code` only (others deferred to 1.6.0)
+- **Env parser bug:** Fixed `test_hook()` env loader to strip `export ` prefix from `.mvar.env` entries (was parsing `'export KEY'` as the key instead of `'KEY'`)
+- **Documentation:** Changed `pip install mvar` → `pip install mvar-security` in `docs/FIRST_PARTY_ADAPTERS.md` and `docs/AGENT_INTEGRATION_PLAYBOOK.md`
+
+### Migration from 1.5.1
+```bash
+pip install --upgrade mvar-security==1.5.2
+```
+
+---
+
 ## [1.5.1] - 2026-04-21 — Critical Hotfix (Import Paths, QSEAL Verification, Secret Leakage)
 
 **⚠️ This release fixes critical issues in 1.5.0. Users should upgrade immediately.**

@@ -20,7 +20,7 @@ python -m pip install . pytest
 Or install published package version:
 
 ```bash
-pip install mvar
+pip install mvar-security
 ```
 
 Quick import check:
