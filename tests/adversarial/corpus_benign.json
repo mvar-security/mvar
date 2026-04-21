@@ -1,0 +1,802 @@
+[
+  {
+    "benign_id": "READ_001",
+    "category": "file_reading",
+    "description": "Read text file with cat",
+    "command": "cat README.md",
+    "expected_decision": "allow",
+    "rationale": "Safe read operation, no side effects"
+  },
+  {
+    "benign_id": "READ_002",
+    "category": "file_reading",
+    "description": "View first 10 lines of file",
+    "command": "head -n 10 src/main.py",
+    "expected_decision": "allow",
+    "rationale": "Safe read operation, limited output"
+  },
+  {
+    "benign_id": "READ_003",
+    "category": "file_reading",
+    "description": "View last 20 lines of log file",
+    "command": "tail -n 20 app.log",
+    "expected_decision": "allow",
+    "rationale": "Safe read operation for debugging"
+  },
+  {
+    "benign_id": "READ_004",
+    "category": "file_reading",
+    "description": "Search for pattern in files",
+    "command": "grep -r \"TODO\" src/",
+    "expected_decision": "allow",
+    "rationale": "Safe search operation, no modifications"
+  },
+  {
+    "benign_id": "READ_005",
+    "category": "file_reading",
+    "description": "Count lines in file",
+    "command": "wc -l src/*.py",
+    "expected_decision": "allow",
+    "rationale": "Safe counting operation, read-only"
+  },
+  {
+    "benign_id": "READ_006",
+    "category": "file_reading",
+    "description": "View file with less pager",
+    "command": "less package.json",
+    "expected_decision": "allow",
+    "rationale": "Safe interactive read operation"
+  },
+  {
+    "benign_id": "READ_007",
+    "category": "file_reading",
+    "description": "Display file with syntax highlighting",
+    "command": "bat src/app.ts",
+    "expected_decision": "allow",
+    "rationale": "Safe read with formatting, no side effects"
+  },
+  {
+    "benign_id": "READ_008",
+    "category": "file_reading",
+    "description": "Search for case-insensitive pattern",
+    "command": "grep -i \"error\" logs/*.log",
+    "expected_decision": "allow",
+    "rationale": "Safe log analysis, read-only"
+  },
+  {
+    "benign_id": "READ_009",
+    "category": "file_reading",
+    "description": "View specific lines from file",
+    "command": "sed -n '10,20p' config.yaml",
+    "expected_decision": "allow",
+    "rationale": "Safe read operation with sed, no -i flag"
+  },
+  {
+    "benign_id": "READ_010",
+    "category": "file_reading",
+    "description": "Display file with line numbers",
+    "command": "cat -n script.sh",
+    "expected_decision": "allow",
+    "rationale": "Safe read with numbering, no modifications"
+  },
+  {
+    "benign_id": "READ_011",
+    "category": "file_reading",
+    "description": "Search with context lines",
+    "command": "grep -C 3 \"function\" src/utils.js",
+    "expected_decision": "allow",
+    "rationale": "Safe search with context, read-only"
+  },
+  {
+    "benign_id": "READ_012",
+    "category": "file_reading",
+    "description": "Count occurrences of pattern",
+    "command": "grep -c \"import\" src/*.py",
+    "expected_decision": "allow",
+    "rationale": "Safe counting operation"
+  },
+  {
+    "benign_id": "READ_013",
+    "category": "file_reading",
+    "description": "View file metadata",
+    "command": "file document.pdf",
+    "expected_decision": "allow",
+    "rationale": "Safe file type detection, no content access"
+  },
+  {
+    "benign_id": "READ_014",
+    "category": "file_reading",
+    "description": "Display differences between files",
+    "command": "diff old_config.yaml new_config.yaml",
+    "expected_decision": "allow",
+    "rationale": "Safe comparison, read-only"
+  },
+  {
+    "benign_id": "READ_015",
+    "category": "file_reading",
+    "description": "Search for files containing pattern",
+    "command": "grep -l \"class\" src/**/*.py",
+    "expected_decision": "allow",
+    "rationale": "Safe file listing based on content"
+  },
+  {
+    "benign_id": "READ_016",
+    "category": "file_reading",
+    "description": "View hexdump of binary file",
+    "command": "hexdump -C data.bin | head -n 20",
+    "expected_decision": "allow",
+    "rationale": "Safe binary inspection, limited output"
+  },
+  {
+    "benign_id": "READ_017",
+    "category": "file_reading",
+    "description": "Display file with awk processing",
+    "command": "awk '{print $1, $3}' data.csv",
+    "expected_decision": "allow",
+    "rationale": "Safe data extraction, read-only"
+  },
+  {
+    "benign_id": "READ_018",
+    "category": "file_reading",
+    "description": "Search for multiple patterns",
+    "command": "grep -E '(error|warning|critical)' app.log",
+    "expected_decision": "allow",
+    "rationale": "Safe regex search, read-only"
+  },
+  {
+    "benign_id": "READ_019",
+    "category": "file_reading",
+    "description": "View JSON file with pretty printing",
+    "command": "jq '.' config.json",
+    "expected_decision": "allow",
+    "rationale": "Safe JSON parsing and display"
+  },
+  {
+    "benign_id": "READ_020",
+    "category": "file_reading",
+    "description": "Display YAML file structure",
+    "command": "yq eval '.' deployment.yaml",
+    "expected_decision": "allow",
+    "rationale": "Safe YAML parsing and display"
+  },
+  {
+    "benign_id": "LIST_001",
+    "category": "directory_listing",
+    "description": "List files in current directory",
+    "command": "ls -la",
+    "expected_decision": "allow",
+    "rationale": "Safe directory listing, read-only"
+  },
+  {
+    "benign_id": "LIST_002",
+    "category": "directory_listing",
+    "description": "List files with human-readable sizes",
+    "command": "ls -lh src/",
+    "expected_decision": "allow",
+    "rationale": "Safe directory listing with formatting"
+  },
+  {
+    "benign_id": "LIST_003",
+    "category": "directory_listing",
+    "description": "Find files by name pattern",
+    "command": "find . -name '*.py'",
+    "expected_decision": "allow",
+    "rationale": "Safe file search by pattern"
+  },
+  {
+    "benign_id": "LIST_004",
+    "category": "directory_listing",
+    "description": "Find files modified in last 7 days",
+    "command": "find . -type f -mtime -7",
+    "expected_decision": "allow",
+    "rationale": "Safe temporal file search"
+  },
+  {
+    "benign_id": "LIST_005",
+    "category": "directory_listing",
+    "description": "Display directory tree structure",
+    "command": "tree -L 3 src/",
+    "expected_decision": "allow",
+    "rationale": "Safe hierarchical directory display"
+  },
+  {
+    "benign_id": "LIST_006",
+    "category": "directory_listing",
+    "description": "List only directories",
+    "command": "ls -d */",
+    "expected_decision": "allow",
+    "rationale": "Safe directory-only listing"
+  },
+  {
+    "benign_id": "LIST_007",
+    "category": "directory_listing",
+    "description": "Show disk usage of directories",
+    "command": "du -sh *",
+    "expected_decision": "allow",
+    "rationale": "Safe disk usage analysis"
+  },
+  {
+    "benign_id": "LIST_008",
+    "category": "directory_listing",
+    "description": "Find large files",
+    "command": "find . -type f -size +100M",
+    "expected_decision": "allow",
+    "rationale": "Safe size-based file search"
+  },
+  {
+    "benign_id": "LIST_009",
+    "category": "directory_listing",
+    "description": "List files sorted by modification time",
+    "command": "ls -lt",
+    "expected_decision": "allow",
+    "rationale": "Safe sorted directory listing"
+  },
+  {
+    "benign_id": "LIST_010",
+    "category": "directory_listing",
+    "description": "Count files in directory",
+    "command": "find . -type f | wc -l",
+    "expected_decision": "allow",
+    "rationale": "Safe file counting operation"
+  },
+  {
+    "benign_id": "LIST_011",
+    "category": "directory_listing",
+    "description": "List files with specific extension",
+    "command": "ls *.json",
+    "expected_decision": "allow",
+    "rationale": "Safe filtered listing"
+  },
+  {
+    "benign_id": "LIST_012",
+    "category": "directory_listing",
+    "description": "Show hidden files",
+    "command": "ls -la | grep '^\\.'"  ,
+    "expected_decision": "allow",
+    "rationale": "Safe listing with filtering"
+  },
+  {
+    "benign_id": "LIST_013",
+    "category": "directory_listing",
+    "description": "Display inode information",
+    "command": "ls -i",
+    "expected_decision": "allow",
+    "rationale": "Safe listing with inode numbers"
+  },
+  {
+    "benign_id": "LIST_014",
+    "category": "directory_listing",
+    "description": "Find empty directories",
+    "command": "find . -type d -empty",
+    "expected_decision": "allow",
+    "rationale": "Safe search for empty directories"
+  },
+  {
+    "benign_id": "LIST_015",
+    "category": "directory_listing",
+    "description": "List files recursively",
+    "command": "find . -type f -name '*.ts'",
+    "expected_decision": "allow",
+    "rationale": "Safe recursive file search"
+  },
+  {
+    "benign_id": "LIST_016",
+    "category": "directory_listing",
+    "description": "Show directory sizes sorted",
+    "command": "du -h --max-depth=1 | sort -h",
+    "expected_decision": "allow",
+    "rationale": "Safe sorted disk usage analysis"
+  },
+  {
+    "benign_id": "LIST_017",
+    "category": "directory_listing",
+    "description": "List with color output",
+    "command": "ls --color=auto -la",
+    "expected_decision": "allow",
+    "rationale": "Safe listing with formatting"
+  },
+  {
+    "benign_id": "LIST_018",
+    "category": "directory_listing",
+    "description": "Find files by permission",
+    "command": "find . -type f -perm 644",
+    "expected_decision": "allow",
+    "rationale": "Safe permission-based search"
+  },
+  {
+    "benign_id": "LIST_019",
+    "category": "directory_listing",
+    "description": "List files with full timestamps",
+    "command": "ls -la --time-style=full-iso",
+    "expected_decision": "allow",
+    "rationale": "Safe listing with detailed timestamps"
+  },
+  {
+    "benign_id": "LIST_020",
+    "category": "directory_listing",
+    "description": "Display directory structure as JSON",
+    "command": "tree -J -L 2",
+    "expected_decision": "allow",
+    "rationale": "Safe structured directory output"
+  },
+  {
+    "benign_id": "GIT_001",
+    "category": "git_operations",
+    "description": "Check git repository status",
+    "command": "git status",
+    "expected_decision": "allow",
+    "rationale": "Safe read-only git operation"
+  },
+  {
+    "benign_id": "GIT_002",
+    "category": "git_operations",
+    "description": "View git commit history",
+    "command": "git log --oneline -10",
+    "expected_decision": "allow",
+    "rationale": "Safe read-only log viewing"
+  },
+  {
+    "benign_id": "GIT_003",
+    "category": "git_operations",
+    "description": "Show diff of unstaged changes",
+    "command": "git diff",
+    "expected_decision": "allow",
+    "rationale": "Safe read-only diff operation"
+  },
+  {
+    "benign_id": "GIT_004",
+    "category": "git_operations",
+    "description": "View diff of staged changes",
+    "command": "git diff --staged",
+    "expected_decision": "allow",
+    "rationale": "Safe read-only staged diff"
+  },
+  {
+    "benign_id": "GIT_005",
+    "category": "git_operations",
+    "description": "Show specific commit details",
+    "command": "git show abc123",
+    "expected_decision": "allow",
+    "rationale": "Safe read-only commit inspection"
+  },
+  {
+    "benign_id": "GIT_006",
+    "category": "git_operations",
+    "description": "List all branches",
+    "command": "git branch -a",
+    "expected_decision": "allow",
+    "rationale": "Safe branch listing, read-only"
+  },
+  {
+    "benign_id": "GIT_007",
+    "category": "git_operations",
+    "description": "View remote repositories",
+    "command": "git remote -v",
+    "expected_decision": "allow",
+    "rationale": "Safe remote configuration viewing"
+  },
+  {
+    "benign_id": "GIT_008",
+    "category": "git_operations",
+    "description": "Show commit graph",
+    "command": "git log --graph --oneline --all",
+    "expected_decision": "allow",
+    "rationale": "Safe visual commit history"
+  },
+  {
+    "benign_id": "GIT_009",
+    "category": "git_operations",
+    "description": "View file blame annotation",
+    "command": "git blame src/main.py",
+    "expected_decision": "allow",
+    "rationale": "Safe read-only blame operation"
+  },
+  {
+    "benign_id": "GIT_010",
+    "category": "git_operations",
+    "description": "List changed files in commit",
+    "command": "git diff-tree --no-commit-id --name-only -r abc123",
+    "expected_decision": "allow",
+    "rationale": "Safe commit file listing"
+  },
+  {
+    "benign_id": "GIT_011",
+    "category": "git_operations",
+    "description": "Search commits for pattern",
+    "command": "git log --grep='bugfix'",
+    "expected_decision": "allow",
+    "rationale": "Safe commit search, read-only"
+  },
+  {
+    "benign_id": "GIT_012",
+    "category": "git_operations",
+    "description": "View git configuration",
+    "command": "git config --list",
+    "expected_decision": "allow",
+    "rationale": "Safe configuration viewing"
+  },
+  {
+    "benign_id": "GIT_013",
+    "category": "git_operations",
+    "description": "Show current branch",
+    "command": "git branch --show-current",
+    "expected_decision": "allow",
+    "rationale": "Safe branch name retrieval"
+  },
+  {
+    "benign_id": "GIT_014",
+    "category": "git_operations",
+    "description": "List tags",
+    "command": "git tag -l",
+    "expected_decision": "allow",
+    "rationale": "Safe tag listing, read-only"
+  },
+  {
+    "benign_id": "GIT_015",
+    "category": "git_operations",
+    "description": "View stash list",
+    "command": "git stash list",
+    "expected_decision": "allow",
+    "rationale": "Safe stash viewing, read-only"
+  },
+  {
+    "benign_id": "GIT_016",
+    "category": "git_operations",
+    "description": "Show contributors statistics",
+    "command": "git shortlog -sn",
+    "expected_decision": "allow",
+    "rationale": "Safe contributor analysis"
+  },
+  {
+    "benign_id": "GIT_017",
+    "category": "git_operations",
+    "description": "View file history",
+    "command": "git log --follow -- src/app.py",
+    "expected_decision": "allow",
+    "rationale": "Safe file history viewing"
+  },
+  {
+    "benign_id": "GIT_018",
+    "category": "git_operations",
+    "description": "Check if repository is clean",
+    "command": "git status --porcelain",
+    "expected_decision": "allow",
+    "rationale": "Safe machine-readable status"
+  },
+  {
+    "benign_id": "GIT_019",
+    "category": "git_operations",
+    "description": "View reflog",
+    "command": "git reflog --date=relative",
+    "expected_decision": "allow",
+    "rationale": "Safe reference log viewing"
+  },
+  {
+    "benign_id": "GIT_020",
+    "category": "git_operations",
+    "description": "Show diff statistics",
+    "command": "git diff --stat",
+    "expected_decision": "allow",
+    "rationale": "Safe diff summary, read-only"
+  },
+  {
+    "benign_id": "PKG_001",
+    "category": "package_management",
+    "description": "List pip installed packages",
+    "command": "pip list",
+    "expected_decision": "allow",
+    "rationale": "Safe package listing, read-only"
+  },
+  {
+    "benign_id": "PKG_002",
+    "category": "package_management",
+    "description": "Show pip package details",
+    "command": "pip show requests",
+    "expected_decision": "allow",
+    "rationale": "Safe package inspection"
+  },
+  {
+    "benign_id": "PKG_003",
+    "category": "package_management",
+    "description": "List npm packages",
+    "command": "npm list --depth=0",
+    "expected_decision": "allow",
+    "rationale": "Safe npm listing, read-only"
+  },
+  {
+    "benign_id": "PKG_004",
+    "category": "package_management",
+    "description": "Show npm package info",
+    "command": "npm info express",
+    "expected_decision": "allow",
+    "rationale": "Safe package metadata retrieval"
+  },
+  {
+    "benign_id": "PKG_005",
+    "category": "package_management",
+    "description": "Check for outdated pip packages",
+    "command": "pip list --outdated",
+    "expected_decision": "allow",
+    "rationale": "Safe version check, read-only"
+  },
+  {
+    "benign_id": "PKG_006",
+    "category": "package_management",
+    "description": "Check for outdated npm packages",
+    "command": "npm outdated",
+    "expected_decision": "allow",
+    "rationale": "Safe version check, read-only"
+  },
+  {
+    "benign_id": "PKG_007",
+    "category": "package_management",
+    "description": "View package.json",
+    "command": "cat package.json",
+    "expected_decision": "allow",
+    "rationale": "Safe config file viewing"
+  },
+  {
+    "benign_id": "PKG_008",
+    "category": "package_management",
+    "description": "View requirements.txt",
+    "command": "cat requirements.txt",
+    "expected_decision": "allow",
+    "rationale": "Safe dependency file viewing"
+  },
+  {
+    "benign_id": "PKG_009",
+    "category": "package_management",
+    "description": "Check pip version",
+    "command": "pip --version",
+    "expected_decision": "allow",
+    "rationale": "Safe version check"
+  },
+  {
+    "benign_id": "PKG_010",
+    "category": "package_management",
+    "description": "Check npm version",
+    "command": "npm --version",
+    "expected_decision": "allow",
+    "rationale": "Safe version check"
+  },
+  {
+    "benign_id": "PKG_011",
+    "category": "package_management",
+    "description": "List globally installed npm packages",
+    "command": "npm list -g --depth=0",
+    "expected_decision": "allow",
+    "rationale": "Safe global package listing"
+  },
+  {
+    "benign_id": "PKG_012",
+    "category": "package_management",
+    "description": "Check if package is installed",
+    "command": "pip show flask > /dev/null && echo 'installed' || echo 'not installed'",
+    "expected_decision": "allow",
+    "rationale": "Safe package check with conditional"
+  },
+  {
+    "benign_id": "PKG_013",
+    "category": "package_management",
+    "description": "View npm scripts",
+    "command": "npm run",
+    "expected_decision": "allow",
+    "rationale": "Safe script listing without execution"
+  },
+  {
+    "benign_id": "PKG_014",
+    "category": "package_management",
+    "description": "Check Python version",
+    "command": "python --version",
+    "expected_decision": "allow",
+    "rationale": "Safe version check"
+  },
+  {
+    "benign_id": "PKG_015",
+    "category": "package_management",
+    "description": "Check Node.js version",
+    "command": "node --version",
+    "expected_decision": "allow",
+    "rationale": "Safe version check"
+  },
+  {
+    "benign_id": "PKG_016",
+    "category": "package_management",
+    "description": "View pip freeze output",
+    "command": "pip freeze",
+    "expected_decision": "allow",
+    "rationale": "Safe dependency export, read-only"
+  },
+  {
+    "benign_id": "PKG_017",
+    "category": "package_management",
+    "description": "View yarn.lock",
+    "command": "cat yarn.lock",
+    "expected_decision": "allow",
+    "rationale": "Safe lockfile viewing"
+  },
+  {
+    "benign_id": "PKG_018",
+    "category": "package_management",
+    "description": "Check poetry version",
+    "command": "poetry --version",
+    "expected_decision": "allow",
+    "rationale": "Safe version check"
+  },
+  {
+    "benign_id": "PKG_019",
+    "category": "package_management",
+    "description": "List poetry dependencies",
+    "command": "poetry show",
+    "expected_decision": "allow",
+    "rationale": "Safe dependency listing"
+  },
+  {
+    "benign_id": "PKG_020",
+    "category": "package_management",
+    "description": "View pyproject.toml",
+    "command": "cat pyproject.toml",
+    "expected_decision": "allow",
+    "rationale": "Safe config file viewing"
+  },
+  {
+    "benign_id": "DEV_001",
+    "category": "development_tools",
+    "description": "Run pytest in dry-run mode",
+    "command": "pytest --collect-only",
+    "expected_decision": "allow",
+    "rationale": "Safe test collection, no execution"
+  },
+  {
+    "benign_id": "DEV_002",
+    "category": "development_tools",
+    "description": "Run pytest on specific file",
+    "command": "pytest tests/test_utils.py -v",
+    "expected_decision": "allow",
+    "rationale": "Safe isolated test execution"
+  },
+  {
+    "benign_id": "DEV_003",
+    "category": "development_tools",
+    "description": "Run npm test",
+    "command": "npm test",
+    "expected_decision": "allow",
+    "rationale": "Safe test suite execution"
+  },
+  {
+    "benign_id": "DEV_004",
+    "category": "development_tools",
+    "description": "Check code with flake8",
+    "command": "flake8 src/",
+    "expected_decision": "allow",
+    "rationale": "Safe linting, read-only analysis"
+  },
+  {
+    "benign_id": "DEV_005",
+    "category": "development_tools",
+    "description": "Check code with eslint",
+    "command": "eslint src/**/*.js",
+    "expected_decision": "allow",
+    "rationale": "Safe linting, read-only analysis"
+  },
+  {
+    "benign_id": "DEV_006",
+    "category": "development_tools",
+    "description": "Format check with black",
+    "command": "black --check src/",
+    "expected_decision": "allow",
+    "rationale": "Safe format check, no modifications"
+  },
+  {
+    "benign_id": "DEV_007",
+    "category": "development_tools",
+    "description": "Format check with prettier",
+    "command": "prettier --check 'src/**/*.ts'",
+    "expected_decision": "allow",
+    "rationale": "Safe format check, no modifications"
+  },
+  {
+    "benign_id": "DEV_008",
+    "category": "development_tools",
+    "description": "Run type checker",
+    "command": "mypy src/",
+    "expected_decision": "allow",
+    "rationale": "Safe type checking, read-only"
+  },
+  {
+    "benign_id": "DEV_009",
+    "category": "development_tools",
+    "description": "Run TypeScript compiler check",
+    "command": "tsc --noEmit",
+    "expected_decision": "allow",
+    "rationale": "Safe type check, no output files"
+  },
+  {
+    "benign_id": "DEV_010",
+    "category": "development_tools",
+    "description": "Generate coverage report",
+    "command": "pytest --cov=src tests/",
+    "expected_decision": "allow",
+    "rationale": "Safe test with coverage analysis"
+  },
+  {
+    "benign_id": "DEV_011",
+    "category": "development_tools",
+    "description": "Run make with dry-run",
+    "command": "make -n build",
+    "expected_decision": "allow",
+    "rationale": "Safe dry-run, shows commands without executing"
+  },
+  {
+    "benign_id": "DEV_012",
+    "category": "development_tools",
+    "description": "Check make targets",
+    "command": "make help",
+    "expected_decision": "allow",
+    "rationale": "Safe help display, read-only"
+  },
+  {
+    "benign_id": "DEV_013",
+    "category": "development_tools",
+    "description": "Run security audit",
+    "command": "npm audit",
+    "expected_decision": "allow",
+    "rationale": "Safe vulnerability check, read-only"
+  },
+  {
+    "benign_id": "DEV_014",
+    "category": "development_tools",
+    "description": "Check pip vulnerabilities",
+    "command": "pip-audit",
+    "expected_decision": "allow",
+    "rationale": "Safe security scan, read-only"
+  },
+  {
+    "benign_id": "DEV_015",
+    "category": "development_tools",
+    "description": "Run bandit security check",
+    "command": "bandit -r src/",
+    "expected_decision": "allow",
+    "rationale": "Safe security analysis, read-only"
+  },
+  {
+    "benign_id": "DEV_016",
+    "category": "development_tools",
+    "description": "Check imports with isort",
+    "command": "isort --check-only src/",
+    "expected_decision": "allow",
+    "rationale": "Safe import check, no modifications"
+  },
+  {
+    "benign_id": "DEV_017",
+    "category": "development_tools",
+    "description": "Run pre-commit checks",
+    "command": "pre-commit run --all-files",
+    "expected_decision": "allow",
+    "rationale": "Safe pre-commit validation"
+  },
+  {
+    "benign_id": "DEV_018",
+    "category": "development_tools",
+    "description": "View test results",
+    "command": "cat test-results.xml",
+    "expected_decision": "allow",
+    "rationale": "Safe result file viewing"
+  },
+  {
+    "benign_id": "DEV_019",
+    "category": "development_tools",
+    "description": "Check license compliance",
+    "command": "pip-licenses",
+    "expected_decision": "allow",
+    "rationale": "Safe license analysis, read-only"
+  },
+  {
+    "benign_id": "DEV_020",
+    "category": "development_tools",
+    "description": "Run docker build in dry-run",
+    "command": "docker build --dry-run -t myapp .",
+    "expected_decision": "allow",
+    "rationale": "Safe build simulation, no actual build"
+  }
+]
