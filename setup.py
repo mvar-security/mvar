@@ -37,7 +37,7 @@ setup(
     python_requires=">=3.10",
     install_requires=[
         "numpy>=1.26.0,<3.0.0",
-        "cryptography==46.0.5",
+        "cryptography==46.0.7",
         "prometheus-client>=0.20.0,<1.0.0",
         "opentelemetry-api>=1.24.0,<2.0.0",
         "opentelemetry-sdk>=1.24.0,<2.0.0",
@@ -45,8 +45,8 @@ setup(
     ],
     extras_require={
         "dev": [
-            "pytest>=7.4.0,<8.0.0",
-            "pytest-cov>=4.1.0,<5.0.0",
+            "pytest>=7.4.0,<10.0.0",
+            "pytest-cov>=4.1.0,<8.0.0",
             "pytest-asyncio>=0.23.0",
         ],
         "observability": [
