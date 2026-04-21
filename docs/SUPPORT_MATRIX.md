@@ -6,7 +6,7 @@
 
 | Framework | Status | Install | Verify | Test | Mission Control | Documentation |
 |-----------|--------|---------|--------|------|-----------------|---------------|
-| **Claude Code** | ✅ GA | `mvar init --framework claude-code` | ✅ | ✅ | ✅ | [Guide](FIRST_PARTY_ADAPTERS.md#claude-code) |
+| **Claude Code** | ✅ GA | `mvar init --framework claude-code` | ✅ | ✅ | ✅ | [Guide](AGENT_INTEGRATION_PLAYBOOK.md) |
 
 **GA Criteria:**
 - One-command install works end-to-end

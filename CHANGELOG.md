@@ -3,6 +3,28 @@
 All notable changes to MVAR are documented here.
 Detailed release notes live under `docs/releases/*`.
 
+## [1.5.3] - 2026-04-21 — Gap Closure Documentation (Honest Positioning)
+
+**Focus:** Credibility baseline - honest positioning, prior art evidence, Ed25519 roadmap
+
+### Documentation
+- **Added:** Framework support matrix with GA criteria (`docs/SUPPORT_MATRIX.md`)
+- **Added:** QSEAL modes documentation - HMAC vs Ed25519 limitations (`docs/security/QSEAL_MODES.md`)
+- **Added:** Prior art comparison with evidence table (`docs/security/PRIOR_ART.md`)
+- **Added:** 10-minute proof runbook for reproducible validation (`docs/PROOF_RUNBOOK.md`)
+- **Added:** 6-week gap closure tracker with metrics-first approach (`docs/GAP_CLOSURE_TRACKER.md`)
+- **Updated:** README with production-ready framework status section
+
+### Positioning Corrections
+- **HMAC limitation documented:** HMAC provides tamper-evidence within trust boundary, not third-party non-repudiation (Ed25519 planned for 1.6.0)
+- **Framework scope:** Only Claude Code is GA; others marked as planned with roadmap
+- **Prior art table:** Evidence-based positioning vs academic work, OSS projects, commercial products
+
+### Migration from 1.5.2
+No code changes. Documentation-only release. No action required.
+
+---
+
 ## [1.5.2] - 2026-04-21 — Security Update (CVE Fix + CLI Scoping)
 
 **⚠️ Critical: Published 1.5.1 package contained cryptography==46.0.5 with 2 CVEs. This release updates to cryptography==46.0.7.**
