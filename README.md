@@ -124,6 +124,21 @@ except ExecutionBlocked as e:
 
 Profiles: `balanced` (default), `strict`, `permissive`.
 
+## Production Ready: Claude Code
+
+**MVAR is production-ready for Claude Code.** Other framework integrations are in development.
+
+| Framework | Status | Install | Documentation |
+|-----------|--------|---------|---------------|
+| **Claude Code** | ✅ **Production Ready** | `mvar init --framework claude-code` | [Guide](docs/FIRST_PARTY_ADAPTERS.md#claude-code) |
+| LangChain | 🚧 Planned (1.5.5 - May 2026) | Coming soon | [Roadmap](docs/SUPPORT_MATRIX.md) |
+| OpenAI Agents | 📋 Planned (1.6.x) | Coming soon | [Roadmap](docs/SUPPORT_MATRIX.md) |
+| MCP | 📋 Planned (1.6.x) | Coming soon | [Roadmap](docs/SUPPORT_MATRIX.md) |
+
+**See full framework support status:** [docs/SUPPORT_MATRIX.md](docs/SUPPORT_MATRIX.md)
+
+**10-minute validation runbook:** [docs/PROOF_RUNBOOK.md](docs/PROOF_RUNBOOK.md)
+
 ## What MVAR Is
 
 MVAR (MIRRA Verified Agent Runtime) is a deterministic execution security
