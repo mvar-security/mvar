@@ -4,6 +4,10 @@ Test S1501-02: Mission Control adapter type import path fix.
 Verifies that the adapter can be imported and initialized.
 """
 import asyncio
+import pytest
+
+# Skip if httpx not installed (Mission Control adapter requires it)
+pytest.importorskip("httpx")
 
 
 def test_mission_control_adapter_import_and_init():
