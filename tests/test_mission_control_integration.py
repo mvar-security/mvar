@@ -14,8 +14,8 @@ from pathlib import Path
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from mvar.adapters.mission_control_adapter import MVARAdapter
-from mvar.adapters.types import AgentRegistration, HeartbeatPayload, TaskReport
+from mvar.mission_control.adapter import MVARAdapter
+from mvar.mission_control.types import AgentRegistration, HeartbeatPayload, TaskReport
 
 
 async def main():

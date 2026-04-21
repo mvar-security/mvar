@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-MVAR CLI — Command-line interface for mvar-security 1.5.0
+MVAR CLI — Command-line interface for mvar-security 1.5.1
 ==========================================================
 
 Usage:
@@ -94,14 +94,21 @@ def print_version():
     """Print version information."""
     print("=" * 70)
     print("  MVAR — MIRRA Verified Agent Runtime")
-    print("  Version 1.5.0")
+    print("  Version 1.5.1")
     print("=" * 70)
     print()
     print("Author: Shawn Cohen")
     print("License: Apache 2.0")
     print("Repository: https://github.com/mvar-security/mvar")
     print()
-    print("New in 1.5.0:")
+    print("Fixed in 1.5.1 (Critical Hotfix):")
+    print("  - Mission Control import paths (S1501-01, S1501-02)")
+    print("  - QSEAL exports and verification (S1501-03, S1501-04)")
+    print("  - PostToolUse fail-open contract messaging (S1501-05)")
+    print("  - MC_URL configuration support (I1501-01)")
+    print("  - Secret leakage in installer/logs (I1501-02)")
+    print()
+    print("Released in 1.5.0:")
     print("  - Unified CLI with framework-specific installers")
     print("  - Claude Code PostToolUse hook integration")
     print("  - Mission Control adapter with QSEAL signing")

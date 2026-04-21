@@ -1,5 +1,5 @@
-"""MVAR Framework Adapters."""
+"""Mission Control integration exports for mvar."""
 
-from mvar.adapters.mission_control_adapter import MVARAdapter
+from .adapter import MVARAdapter
 
 __all__ = ["MVARAdapter"]

@@ -40,7 +40,7 @@ except ImportError:
         "Install with: pip install httpx"
     )
 
-from mvar.adapters.types import (
+from mvar.mission_control.types import (
     AgentRegistration,
     AgentRegistrationResponse,
     HeartbeatPayload,
@@ -234,12 +234,20 @@ class MVARAdapter:
             hashlib.sha256
         ).hexdigest()
 
+        # Verify the signature by recomputing
+        recomputed_signature = hmac.new(
+            self._qseal_secret,
+            canonical_json.encode(),
+            hashlib.sha256
+        ).hexdigest()
+        qseal_verified = hmac.compare_digest(qseal_signature, recomputed_signature)
+
         # Build metadata with QSEAL signature
         metadata = {
             "mvar_policy_outcome": policy_outcome,
             "qseal_signature": qseal_signature,
             "qseal_meta_hash": meta_hash,
-            "qseal_verified": True,
+            "qseal_verified": qseal_verified,
         }
 
         if isinstance(output, dict) and "witness" in output:

@@ -155,10 +155,10 @@ def install_hook(
     if qseal_secret is None:
         qseal_secret = secrets.token_urlsafe(32)
         print(f"[3/6] Generated QSEAL_SECRET...")
-        print(f"      ✅ {qseal_secret[:16]}... (32 bytes)")
+        print("      ✅ QSEAL_SECRET generated")
     else:
         print(f"[3/6] Using provided QSEAL_SECRET...")
-        print(f"      ✅ {qseal_secret[:16]}...")
+        print("      ✅ QSEAL_SECRET configured")
     print()
 
     # Step 5: Get Mission Control credentials
@@ -183,12 +183,12 @@ def install_hook(
             mc_api_key = ''  # Optional in non-interactive mode
 
     if mc_api_key:
-        print(f"      ✅ API key: {mc_api_key[:8]}...")
+        print("      ✅ MC_API_KEY configured")
     print()
 
     # Step 6: Write environment file
     print(f"[5/6] Writing environment configuration...")
-    _write_env_file(env_file, qseal_secret, mc_api_key)
+    _write_env_file(env_file, qseal_secret, mc_api_key, mc_url)
     print(f"      ✅ {env_file}")
     print()
 
@@ -646,7 +646,7 @@ def _save_settings(settings_file: Path, settings: Dict[str, Any]) -> None:
         f.write('\n')
 
 
-def _write_env_file(env_file: Path, qseal_secret: str, mc_api_key: str) -> None:
+def _write_env_file(env_file: Path, qseal_secret: str, mc_api_key: str, mc_url: str) -> None:
     """Write environment configuration file."""
     lines = [
         "# MVAR Security environment variables\n",
@@ -659,6 +659,8 @@ def _write_env_file(env_file: Path, qseal_secret: str, mc_api_key: str) -> None:
 
     if mc_api_key:
         lines.append(f"export MC_API_KEY={mc_api_key}\n")
+
+    lines.append(f"export MC_URL={mc_url}\n")
 
     with open(env_file, 'w') as f:
         f.writelines(lines)

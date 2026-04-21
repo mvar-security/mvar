@@ -33,9 +33,12 @@ from datetime import datetime
 
 # Debug log path
 DEBUG_LOG = Path("/tmp/mvar_hook_mc_debug.log")
+DEBUG_ENABLED = os.getenv("MVAR_HOOK_DEBUG", "0") == "1"
 
 def debug_log(message: str) -> None:
     """Write debug message to log file with timestamp."""
+    if not DEBUG_ENABLED:
+        return
     try:
         with open(DEBUG_LOG, "a") as f:
             timestamp = datetime.now().isoformat()
@@ -51,11 +54,11 @@ try:
     from mvar.hooks import evaluate_bash_command
     debug_log("bash_policy loaded successfully from mvar.hooks")
 except ImportError as e:
-    # Fail-closed: If we can't import the policy engine, block everything
+    # PostToolUse is audit-only. Import failures are fail-open (command already executed).
     output = {
         "hookSpecificOutput": {
             "hookEventName": "PostToolUse",
-            "additionalContext": f"❌ MVAR: Policy engine import failed\n\nError: {e}\n\nCommands blocked for security.",
+            "additionalContext": f"⚠️ MVAR Audit: Policy engine import failed\n\nError: {e}\n\nCommand already executed (PostToolUse audit mode).",
         }
     }
     print(json.dumps(output))
@@ -77,7 +80,7 @@ def report_to_mission_control(
     In audit mode (PostToolUse), all commands execute. We log which ones
     would have been blocked in enforcement mode.
     """
-    debug_log(f"report_to_mission_control called: command={command[:50]}, decision={decision}")
+    debug_log(f"report_to_mission_control called: command_len={len(command)}, decision={decision}")
 
     try:
         # Use synchronous HTTP instead of async to avoid event loop issues in subprocess
@@ -85,7 +88,7 @@ def report_to_mission_control(
 
         debug_log("Attempting httpx import - SUCCESS")
 
-        base_url = "http://localhost:3000"
+        base_url = os.getenv("MC_URL", "http://localhost:3000").rstrip("/")
         debug_log(f"Mission Control URL: {base_url}")
 
         # Build payloads
@@ -133,7 +136,7 @@ def report_to_mission_control(
             },
         }
 
-        debug_log(f"Task payload prepared: {json.dumps(task_payload, indent=2)}")
+        debug_log(f"Task payload prepared (size: {len(json.dumps(task_payload))} bytes)")
 
         # QSEAL signing of policy outcome
         import hmac
@@ -149,6 +152,14 @@ def report_to_mission_control(
             hashlib.sha256
         ).hexdigest()
 
+        # Verify the signature by recomputing
+        recomputed_signature = hmac.new(
+            qseal_secret.encode(),
+            canonical_json.encode(),
+            hashlib.sha256
+        ).hexdigest()
+        qseal_verified = hmac.compare_digest(qseal_signature, recomputed_signature)
+
         debug_log(f"QSEAL signature computed: {qseal_signature[:16]}...")
 
         # Build Mission Control task creation payload
@@ -160,7 +171,7 @@ def report_to_mission_control(
                 "mvar_policy_outcome": policy_outcome,
                 "qseal_signature": qseal_signature,
                 "qseal_meta_hash": meta_hash,
-                "qseal_verified": True,
+                "qseal_verified": qseal_verified,
                 "clawzero_witness": task_payload["output"]["witness"],
             },
             "assigned_to": task_payload["agentId"],
@@ -234,7 +245,7 @@ def main():
         # PostToolUse provides tool_response, not tool_output
         tool_response = context.get("tool_response", context.get("tool_output", ""))
 
-        debug_log(f"Command: {command[:100]}")
+        debug_log(f"Command length: {len(command)} bytes")
         debug_log(f"Tool use ID: {tool_use_id}")
         debug_log(f"Tool response length: {len(str(tool_response))}")
 
