@@ -12,7 +12,7 @@ long_description = readme_file.read_text(encoding="utf-8") if readme_file.exists
 
 setup(
     name="mvar-security",
-    version="1.4.3",
+    version="1.5.2",
     author="Shawn Cohen",
     author_email="security@mvar.io",
     description="MVAR: Information Flow Control for LLM Agent Runtimes — Deterministic prompt injection defense via dual-lattice IFC with cryptographic provenance",
@@ -41,11 +41,13 @@ setup(
         "prometheus-client>=0.20.0,<1.0.0",
         "opentelemetry-api>=1.24.0,<2.0.0",
         "opentelemetry-sdk>=1.24.0,<2.0.0",
+        "httpx>=0.27.0,<1.0.0",  # For Mission Control reporting
     ],
     extras_require={
         "dev": [
             "pytest>=7.4.0,<10.0.0",
             "pytest-cov>=4.1.0,<8.0.0",
+            "pytest-asyncio>=0.23.0",
         ],
         "observability": [
             "prometheus-client>=0.20.0,<1.0.0",
@@ -55,10 +57,11 @@ setup(
     },
     entry_points={
         "console_scripts": [
+            # NEW in 1.5.0: Unified CLI
+            "mvar=mvar.cli:main",
+            # LEGACY: Keep existing commands for backward compatibility
             "mvar-demo=demo.openclaw_cve_defense:main",
-            "mvar=demo.info:main",
             "mvar-doctor=demo.info:doctor_main",
-            # NEW: Decision ledger CLI commands
             "mvar-report=mvar_core.cli_ledger:main_report",
             "mvar-explain=mvar_core.cli_ledger:main_explain",
             "mvar-allow=mvar_core.cli_ledger:main_allow",

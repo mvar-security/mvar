@@ -3,6 +3,74 @@
 All notable changes to MVAR are documented here.
 Detailed release notes live under `docs/releases/*`.
 
+## [1.5.2] - 2026-04-21 — Security Update (CVE Fix + CLI Scoping)
+
+**⚠️ Critical: Published 1.5.1 package contained cryptography==46.0.5 with 2 CVEs. This release updates to cryptography==46.0.7.**
+
+### Security
+- **Updated cryptography dependency to 46.0.7** (fixes CVEs in 46.0.5)
+
+### Fixed
+- **CLI scoping:** Removed unimplemented `mvar test` command; limited `--framework` choices to `claude-code` only (others deferred to 1.6.0)
+- **Env parser bug:** Fixed `test_hook()` env loader to strip `export ` prefix from `.mvar.env` entries (was parsing `'export KEY'` as the key instead of `'KEY'`)
+- **Documentation:** Changed `pip install mvar` → `pip install mvar-security` in `docs/FIRST_PARTY_ADAPTERS.md` and `docs/AGENT_INTEGRATION_PLAYBOOK.md`
+
+### Migration from 1.5.1
+```bash
+pip install --upgrade mvar-security==1.5.2
+```
+
+---
+
+## [1.5.1] - 2026-04-21 — Critical Hotfix (Import Paths, QSEAL Verification, Secret Leakage)
+
+**⚠️ This release fixes critical issues in 1.5.0. Users should upgrade immediately.**
+
+### Fixed (Severe)
+- **S1501-01:** Fixed Mission Control package import path (`mvar.mission_control` now correctly exports `MVARAdapter`)
+- **S1501-02:** Fixed Mission Control adapter type import path (changed `mvar.adapters.types` → `mvar.mission_control.types`)
+- **S1501-03:** Fixed broken `mvar.qseal` exports (added `QSeal`, `QSealSigner`, convenience functions `sign_decision`, `verify_signature`)
+- **S1501-04:** Fixed `qseal_verified` flag — now reflects actual HMAC verification instead of hardcoded `True`
+- **S1501-05:** Fixed fail-open/fail-closed contract mismatch in PostToolUse hook (audit-mode messaging now accurate)
+
+### Fixed (Important)
+- **I1501-01:** Configured `MC_URL` now respected end-to-end (written to `.mvar.env`, read by hook runtime)
+- **I1501-02:** Removed secret leakage from installer output and debug logs (secrets no longer printed to stdout; debug logging disabled by default, enable with `MVAR_HOOK_DEBUG=1`)
+
+### Validation
+- **11 new regression tests** added under `tests/release_1_5_1/`
+- **374 tests passing** (full test suite, zero regressions)
+- Critical imports verified in fresh venv
+
+### Migration from 1.5.0
+If you installed 1.5.0, upgrade immediately:
+```bash
+pip install --upgrade mvar-security==1.5.1
+```
+
+---
+
+## [1.5.0] - 2026-04-20 — CLI + Hook + Mission Control Integration (YANKED — Use 1.5.1)
+
+⚠️ **YANKED:** This release shipped with correctness and packaging regressions. **Use 1.5.1 instead.**
+
+### What Was Included
+- Added `mvar/hooks/` with Bash policy and Claude Code PostToolUse hook runtime
+- Added `mvar/adapters/claude_code.py` installer/test/verify flows
+- Added `mvar/mission_control/` adapter and typed payloads
+- Added `mvar/qseal` convenience wrapper
+- Added unified `mvar` CLI entrypoint
+
+### Known Issues (Fixed in 1.5.1)
+- Mission Control imports broken by incorrect module paths
+- `mvar.qseal` exported symbols not present in `mvar_core.qseal`
+- `qseal_verified` was asserted true without verification in emitted metadata
+- PostToolUse audit-mode messaging did not match actual fail-open behavior
+- Configured `MC_URL` was not respected (hardcoded localhost fallback)
+- Secret exposure risk from debug logging and installer output
+
+---
+
 ## [1.4.3] - 2026-03-16 — ExecutionGovernor + ClawZero Integration Bridge
 - **What's New:** Added ExecutionGovernor with typed `ExecutionDecision` contract and ClawZero integration bridge. Made ExecutionGovernor importable from main module.
 - **Security Impact:** Provides unified execution decision surface for governance layer integration. 293 tests passing.

@@ -10,7 +10,7 @@ This guide answers two practical questions:
 Install MVAR in the same runtime environment as the agent process that executes tools.
 
 ```bash
-pip install mvar
+pip install mvar-security
 ```
 
 If the agent runs in Docker/Kubernetes, install MVAR in that image/container.
