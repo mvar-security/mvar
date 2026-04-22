@@ -20,7 +20,10 @@ Usage:
 """
 
 import argparse
+import hashlib
 import json
+import os
+import subprocess
 import sys
 import time
 from datetime import datetime, timezone
@@ -108,6 +111,27 @@ class EvaluationHarness:
         self.attack_results: List[Dict] = []
         self.benign_results: List[BenignTestResult] = []
         self.all_latencies: List[float] = []
+
+    @staticmethod
+    def _sha256_file(path: Path) -> str:
+        """Compute SHA256 digest for provenance pinning."""
+        digest = hashlib.sha256()
+        with path.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(65536), b""):
+                digest.update(chunk)
+        return digest.hexdigest()
+
+    @staticmethod
+    def _git_commit() -> str:
+        """Best-effort git commit lookup for reproducibility metadata."""
+        try:
+            return subprocess.check_output(
+                ["git", "rev-parse", "HEAD"],
+                stderr=subprocess.DEVNULL,
+                text=True,
+            ).strip()
+        except Exception:
+            return "unknown"
 
     def _load_policy_engine(self, profile: str):
         """Load MVAR policy engine with specified profile.
@@ -342,14 +366,26 @@ class EvaluationHarness:
 
         print("\nComputing metrics...")
         metrics = self.compute_metrics()
+        protocol_path = PROJECT_ROOT / "docs/security/EVALUATION_PROTOCOL.md"
+        protocol_hash = self._sha256_file(protocol_path) if protocol_path.exists() else "missing"
+        attack_hash = self._sha256_file(self.attack_corpus_path)
+        benign_hash = self._sha256_file(self.benign_corpus_path)
 
         return {
             'evaluation_config': {
+                'schema_version': 2,
                 'attack_corpus': str(self.attack_corpus_path),
+                'attack_corpus_sha256': attack_hash,
                 'benign_corpus': str(self.benign_corpus_path),
+                'benign_corpus_sha256': benign_hash,
+                'evaluation_protocol': str(protocol_path),
+                'evaluation_protocol_sha256': protocol_hash,
                 'policy_profile': self.policy_profile,
                 'variants_per_attack': self.variants_per_attack,
                 'seed': self.seed,
+                'git_commit': self._git_commit(),
+                'python': sys.version.split()[0],
+                'runner': os.getenv("CI", "local"),
             },
             'metrics': asdict(metrics),
             'attack_results': self.attack_results,
@@ -372,8 +408,15 @@ class EvaluationHarness:
 
 **Policy Profile:** {results['evaluation_config']['policy_profile']}
 **Attack Corpus:** {results['evaluation_config']['attack_corpus']}
+**Attack Corpus SHA256:** `{results['evaluation_config']['attack_corpus_sha256']}`
 **Benign Corpus:** {results['evaluation_config']['benign_corpus']}
+**Benign Corpus SHA256:** `{results['evaluation_config']['benign_corpus_sha256']}`
+**Evaluation Protocol:** {results['evaluation_config']['evaluation_protocol']}
+**Evaluation Protocol SHA256:** `{results['evaluation_config']['evaluation_protocol_sha256']}`
 **Variants Per Attack:** {results['evaluation_config']['variants_per_attack']}
+**Random Seed:** {results['evaluation_config']['seed']}
+**Git Commit:** `{results['evaluation_config']['git_commit']}`
+**Schema Version:** {results['evaluation_config']['schema_version']}
 
 ---
 
