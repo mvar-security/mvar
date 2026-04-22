@@ -53,6 +53,9 @@ jobs:
       - name: Run signed policy-bundle startup gate
         run: python -m pytest -q tests/test_policy_bundle_gate.py
 
+      - name: Run adversarial corpus regression gate (fixed + rotating seeds)
+        run: python -m pytest -q tests/test_adversarial_regression_gate.py
+
   openai-deep-integration:
     name: OpenAI Deep Integration (Python 3.12 + Docker smoke)
     runs-on: ubuntu-latest

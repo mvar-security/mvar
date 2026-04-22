@@ -1,7 +1,7 @@
 # Known Bypasses
 
-Date: 2026-04-21
-Status: 1 residual case observed in current corpus run (`0.20%` total bypass rate).
+Date: 2026-04-22
+Status: Residual cases are now tracked under dual metrics (`raw` + `semantic-preserving`).
 
 ## Residual Case
 
@@ -14,12 +14,11 @@ Status: 1 residual case observed in current corpus run (`0.20%` total bypass rat
 - This specific variant transformation mutates shell redirection syntax in a way that is not reliably semantic-preserving for the original command intent.
 - The current corpus counts it as a bypass because the transformed command was not blocked, even though transformation fidelity is questionable.
 
-## Next Hardening Step
+## Current Handling
 
-Add a regression fixture that distinguishes:
+Implemented in harness + CI:
 
 1. semantic-preserving evasions (must be blocked), and
-2. semantics-breaking rewrites (should be excluded from bypass scoring).
+2. semantics-breaking rewrites (tracked, but excluded from semantic bypass rate).
 
-This avoids over-crediting invalid evasions while retaining strict enforcement against real attacker-preserving transformations.
-
+This prevents inflating bypass metrics with transformations that do not preserve attacker intent.

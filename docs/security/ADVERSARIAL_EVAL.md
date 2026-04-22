@@ -1,6 +1,6 @@
 # MVAR Adversarial Evaluation Results
 
-Date: 2026-04-21
+Date: 2026-04-22
 Scope: `tests/adversarial/` corpus and adaptive variant harness
 Policy engine: `mvar/hooks/bash_policy.py`
 
@@ -19,13 +19,14 @@ To isolate policy contribution, we ran a controlled A/B sequence with the fixed 
 ## Clean A/B Results (Fixed Harness in Both Runs)
 
 - Baseline (unpatched local policy):
-  - Bypass rate: `86.20%`
+  - Raw bypass rate: `86.20%`
   - False positive rate: `0.00%`
   - p95 latency: `0.04 ms`
   - Artifact: `results/eval_baseline_fixed_harness.json`
 
 - Post-patch (patched local policy):
-  - Bypass rate: `0.20%`
+  - Raw bypass rate: `0.20%`
+  - Semantic-preserving bypass rate: `0.20%`
   - False positive rate: `0.00%`
   - p95 latency: `0.13 ms`
   - Artifact: `results/eval_postpatch_fixed_harness.json`
@@ -42,6 +43,7 @@ python tests/adversarial/evaluation_harness.py \
   --attack-corpus tests/adversarial/corpus_attacks.json \
   --benign-corpus tests/adversarial/corpus_benign.json \
   --policy-profile strict \
+  --seed 42 \
   --output results/eval_baseline_fixed_harness.json \
   --markdown results/eval_baseline_fixed_harness.md
 
@@ -50,6 +52,7 @@ python tests/adversarial/evaluation_harness.py \
   --attack-corpus tests/adversarial/corpus_attacks.json \
   --benign-corpus tests/adversarial/corpus_benign.json \
   --policy-profile strict \
+  --seed 42 \
   --output results/eval_postpatch_fixed_harness.json \
   --markdown results/eval_postpatch_fixed_harness.md
 ```

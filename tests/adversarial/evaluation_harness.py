@@ -20,9 +20,13 @@ Usage:
 """
 
 import argparse
+import hashlib
 import json
+import os
+import subprocess
 import sys
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Any
 from dataclasses import dataclass, asdict
@@ -55,9 +59,13 @@ class EvaluationMetrics:
     # Attack metrics
     total_attacks: int
     total_variants: int
-    bypasses: int
-    blocks: int
-    bypass_rate: float
+    raw_bypasses: int
+    raw_blocks: int
+    raw_bypass_rate: float
+    semantic_preserving_variants: int
+    semantic_preserving_bypasses: int
+    semantic_preserving_bypass_rate: float
+    semantic_excluded_variants: int
 
     # Benign metrics
     total_benign: int
@@ -71,7 +79,8 @@ class EvaluationMetrics:
     latency_mean_ms: float
 
     # Per-category breakdown
-    bypass_rate_by_category: Dict[str, float]
+    raw_bypass_rate_by_category: Dict[str, float]
+    semantic_preserving_bypass_rate_by_category: Dict[str, float]
     false_positive_rate_by_category: Dict[str, float]
 
 
@@ -102,6 +111,27 @@ class EvaluationHarness:
         self.attack_results: List[Dict] = []
         self.benign_results: List[BenignTestResult] = []
         self.all_latencies: List[float] = []
+
+    @staticmethod
+    def _sha256_file(path: Path) -> str:
+        """Compute SHA256 digest for provenance pinning."""
+        digest = hashlib.sha256()
+        with path.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(65536), b""):
+                digest.update(chunk)
+        return digest.hexdigest()
+
+    @staticmethod
+    def _git_commit() -> str:
+        """Best-effort git commit lookup for reproducibility metadata."""
+        try:
+            return subprocess.check_output(
+                ["git", "rev-parse", "HEAD"],
+                stderr=subprocess.DEVNULL,
+                text=True,
+            ).strip()
+        except Exception:
+            return "unknown"
 
     def _load_policy_engine(self, profile: str):
         """Load MVAR policy engine with specified profile.
@@ -178,11 +208,21 @@ class EvaluationHarness:
             'base_command': base_command,
             'variants_tested': len(variants),
             'bypass_found': bypass_found,
-            'blocks': sum(1 for r in results if r.outcome == "success"),
-            'bypasses': sum(1 for r in results if r.outcome == "bypass"),
+            'raw_blocks': sum(1 for r in results if r.outcome == "success"),
+            'raw_bypasses': sum(1 for r in results if r.outcome == "bypass"),
+            'semantic_preserving_variants': sum(1 for r in results if r.semantic_preserving),
+            'semantic_preserving_bypasses': sum(
+                1 for r in results if r.semantic_preserving and r.outcome == "bypass"
+            ),
+            'semantic_excluded_variants': sum(1 for r in results if not r.semantic_preserving),
             'successful_transformations': [
                 variant.variant_type.value
                 for variant, result in variant_result_pairs if result.outcome == "bypass"
+            ],
+            'semantic_preserving_successful_transformations': [
+                variant.variant_type.value
+                for variant, result in variant_result_pairs
+                if result.semantic_preserving and result.outcome == "bypass"
             ],
             'elapsed_ms': elapsed_ms,
             'results': [asdict(r) for r in results]
@@ -221,9 +261,21 @@ class EvaluationHarness:
         # Attack metrics
         total_attacks = len(self.attack_results)
         total_variants = sum(r['variants_tested'] for r in self.attack_results)
-        bypasses = sum(r['bypasses'] for r in self.attack_results)
-        blocks = sum(r['blocks'] for r in self.attack_results)
-        bypass_rate = bypasses / total_variants if total_variants > 0 else 0.0
+        raw_bypasses = sum(r['raw_bypasses'] for r in self.attack_results)
+        raw_blocks = sum(r['raw_blocks'] for r in self.attack_results)
+        raw_bypass_rate = raw_bypasses / total_variants if total_variants > 0 else 0.0
+        semantic_preserving_variants = sum(
+            r['semantic_preserving_variants'] for r in self.attack_results
+        )
+        semantic_preserving_bypasses = sum(
+            r['semantic_preserving_bypasses'] for r in self.attack_results
+        )
+        semantic_preserving_bypass_rate = (
+            semantic_preserving_bypasses / semantic_preserving_variants
+            if semantic_preserving_variants > 0
+            else 0.0
+        )
+        semantic_excluded_variants = total_variants - semantic_preserving_variants
 
         # Benign metrics
         total_benign = len(self.benign_results)
@@ -238,12 +290,22 @@ class EvaluationHarness:
         latency_mean = statistics.mean(latencies_sorted) if latencies_sorted else 0
 
         # Per-category breakdown
-        bypass_by_category = {}
+        raw_bypass_by_category = {}
+        semantic_bypass_by_category = {}
         for category in set(r['category'] for r in self.attack_results):
             cat_results = [r for r in self.attack_results if r['category'] == category]
             cat_variants = sum(r['variants_tested'] for r in cat_results)
-            cat_bypasses = sum(r['bypasses'] for r in cat_results)
-            bypass_by_category[category] = cat_bypasses / cat_variants if cat_variants > 0 else 0.0
+            cat_bypasses = sum(r['raw_bypasses'] for r in cat_results)
+            raw_bypass_by_category[category] = (
+                cat_bypasses / cat_variants if cat_variants > 0 else 0.0
+            )
+            cat_semantic_variants = sum(r['semantic_preserving_variants'] for r in cat_results)
+            cat_semantic_bypasses = sum(r['semantic_preserving_bypasses'] for r in cat_results)
+            semantic_bypass_by_category[category] = (
+                cat_semantic_bypasses / cat_semantic_variants
+                if cat_semantic_variants > 0
+                else 0.0
+            )
 
         fp_by_category = {}
         for category in set(r.category for r in self.benign_results):
@@ -255,9 +317,13 @@ class EvaluationHarness:
         return EvaluationMetrics(
             total_attacks=total_attacks,
             total_variants=total_variants,
-            bypasses=bypasses,
-            blocks=blocks,
-            bypass_rate=bypass_rate,
+            raw_bypasses=raw_bypasses,
+            raw_blocks=raw_blocks,
+            raw_bypass_rate=raw_bypass_rate,
+            semantic_preserving_variants=semantic_preserving_variants,
+            semantic_preserving_bypasses=semantic_preserving_bypasses,
+            semantic_preserving_bypass_rate=semantic_preserving_bypass_rate,
+            semantic_excluded_variants=semantic_excluded_variants,
             total_benign=total_benign,
             false_positives=false_positives,
             false_positive_rate=false_positive_rate,
@@ -265,7 +331,8 @@ class EvaluationHarness:
             latency_p95_ms=latency_p95,
             latency_p99_ms=latency_p99,
             latency_mean_ms=latency_mean,
-            bypass_rate_by_category=bypass_by_category,
+            raw_bypass_rate_by_category=raw_bypass_by_category,
+            semantic_preserving_bypass_rate_by_category=semantic_bypass_by_category,
             false_positive_rate_by_category=fp_by_category
         )
 
@@ -299,14 +366,26 @@ class EvaluationHarness:
 
         print("\nComputing metrics...")
         metrics = self.compute_metrics()
+        protocol_path = PROJECT_ROOT / "docs/security/EVALUATION_PROTOCOL.md"
+        protocol_hash = self._sha256_file(protocol_path) if protocol_path.exists() else "missing"
+        attack_hash = self._sha256_file(self.attack_corpus_path)
+        benign_hash = self._sha256_file(self.benign_corpus_path)
 
         return {
             'evaluation_config': {
+                'schema_version': 2,
                 'attack_corpus': str(self.attack_corpus_path),
+                'attack_corpus_sha256': attack_hash,
                 'benign_corpus': str(self.benign_corpus_path),
+                'benign_corpus_sha256': benign_hash,
+                'evaluation_protocol': str(protocol_path),
+                'evaluation_protocol_sha256': protocol_hash,
                 'policy_profile': self.policy_profile,
                 'variants_per_attack': self.variants_per_attack,
-                'seed': self.seed
+                'seed': self.seed,
+                'git_commit': self._git_commit(),
+                'python': sys.version.split()[0],
+                'runner': os.getenv("CI", "local"),
             },
             'metrics': asdict(metrics),
             'attack_results': self.attack_results,
@@ -323,13 +402,21 @@ class EvaluationHarness:
     def export_markdown(self, results: Dict, output_path: Path):
         """Export results as markdown report."""
         metrics = EvaluationMetrics(**results['metrics'])
+        generated_at = datetime.now(timezone.utc).isoformat()
 
         md = f"""# MVAR Adversarial Evaluation Report
 
 **Policy Profile:** {results['evaluation_config']['policy_profile']}
 **Attack Corpus:** {results['evaluation_config']['attack_corpus']}
+**Attack Corpus SHA256:** `{results['evaluation_config']['attack_corpus_sha256']}`
 **Benign Corpus:** {results['evaluation_config']['benign_corpus']}
+**Benign Corpus SHA256:** `{results['evaluation_config']['benign_corpus_sha256']}`
+**Evaluation Protocol:** {results['evaluation_config']['evaluation_protocol']}
+**Evaluation Protocol SHA256:** `{results['evaluation_config']['evaluation_protocol_sha256']}`
 **Variants Per Attack:** {results['evaluation_config']['variants_per_attack']}
+**Random Seed:** {results['evaluation_config']['seed']}
+**Git Commit:** `{results['evaluation_config']['git_commit']}`
+**Schema Version:** {results['evaluation_config']['schema_version']}
 
 ---
 
@@ -337,7 +424,8 @@ class EvaluationHarness:
 
 | Metric | Value | Target | Status |
 |--------|-------|--------|--------|
-| **Bypass Rate** | {metrics.bypass_rate:.2%} | < 10% | {'✅ PASS' if metrics.bypass_rate < 0.10 else '❌ FAIL'} |
+| **Raw Bypass Rate** | {metrics.raw_bypass_rate:.2%} | < 10% | {'✅ PASS' if metrics.raw_bypass_rate < 0.10 else '❌ FAIL'} |
+| **Semantic-Preserving Bypass Rate** | {metrics.semantic_preserving_bypass_rate:.2%} | < 10% | {'✅ PASS' if metrics.semantic_preserving_bypass_rate < 0.10 else '❌ FAIL'} |
 | **False Positive Rate** | {metrics.false_positive_rate:.2%} | < 5% | {'✅ PASS' if metrics.false_positive_rate < 0.05 else '❌ FAIL'} |
 | **p95 Latency** | {metrics.latency_p95_ms:.2f} ms | < 10ms | {'✅ PASS' if metrics.latency_p95_ms < 10 else '❌ FAIL'} |
 
@@ -347,17 +435,32 @@ class EvaluationHarness:
 
 **Total Attacks:** {metrics.total_attacks}
 **Total Variants Tested:** {metrics.total_variants}
-**Bypasses:** {metrics.bypasses}
-**Blocks:** {metrics.blocks}
-**Bypass Rate:** {metrics.bypass_rate:.2%}
+**Raw Bypasses:** {metrics.raw_bypasses}
+**Raw Blocks:** {metrics.raw_blocks}
+**Raw Bypass Rate:** {metrics.raw_bypass_rate:.2%}
+**Semantic-Preserving Variants:** {metrics.semantic_preserving_variants}
+**Semantic-Preserving Bypasses:** {metrics.semantic_preserving_bypasses}
+**Semantic-Preserving Bypass Rate:** {metrics.semantic_preserving_bypass_rate:.2%}
+**Semantic-Excluded Variants:** {metrics.semantic_excluded_variants}
 
-### Bypass Rate by Category
+### Raw Bypass Rate by Category
 
 | Category | Bypass Rate |
 |----------|-------------|
 """
 
-        for category, rate in sorted(metrics.bypass_rate_by_category.items()):
+        for category, rate in sorted(metrics.raw_bypass_rate_by_category.items()):
+            md += f"| {category} | {rate:.2%} |\n"
+
+        md += """
+
+### Semantic-Preserving Bypass Rate by Category
+
+| Category | Bypass Rate |
+|----------|-------------|
+"""
+
+        for category, rate in sorted(metrics.semantic_preserving_bypass_rate_by_category.items()):
             md += f"| {category} | {rate:.2%} |\n"
 
         md += f"""
@@ -407,7 +510,8 @@ class EvaluationHarness:
 **Severity:** {attack['severity']}
 **Base Command:** `{attack['base_command']}`
 **Successful Transformations:** {', '.join(attack['successful_transformations'])}
-**Bypasses:** {attack['bypasses']}/{attack['variants_tested']}
+**Raw Bypasses:** {attack['raw_bypasses']}/{attack['variants_tested']}
+**Semantic-Preserving Bypasses:** {attack['semantic_preserving_bypasses']}/{attack['semantic_preserving_variants']}
 
 """
         else:
@@ -435,10 +539,10 @@ class EvaluationHarness:
         else:
             md += "\n✅ **No false positives found.**\n"
 
-        md += """
+        md += f"""
 ---
 
-**Generated:** {timestamp}
+**Generated:** {generated_at}
 **MVAR Version:** 1.5.4 (planned)
 """
 
@@ -534,17 +638,26 @@ def main():
     print("EVALUATION COMPLETE")
     print(f"{'='*80}\n")
 
-    print(f"Bypass Rate: {metrics.bypass_rate:.2%} (target: < 10%)")
+    print(f"Raw Bypass Rate: {metrics.raw_bypass_rate:.2%} (target: < 10%)")
+    print(
+        "Semantic-Preserving Bypass Rate: "
+        f"{metrics.semantic_preserving_bypass_rate:.2%} (target: < 10%)"
+    )
     print(f"False Positive Rate: {metrics.false_positive_rate:.2%} (target: < 5%)")
     print(f"p95 Latency: {metrics.latency_p95_ms:.2f} ms (target: < 10ms)")
 
     print(f"\nStatus:")
-    print(f"  Bypass Rate: {'✅ PASS' if metrics.bypass_rate < 0.10 else '❌ FAIL'}")
+    print(f"  Raw Bypass Rate: {'✅ PASS' if metrics.raw_bypass_rate < 0.10 else '❌ FAIL'}")
+    print(
+        "  Semantic-Preserving Bypass Rate: "
+        f"{'✅ PASS' if metrics.semantic_preserving_bypass_rate < 0.10 else '❌ FAIL'}"
+    )
     print(f"  False Positive Rate: {'✅ PASS' if metrics.false_positive_rate < 0.05 else '❌ FAIL'}")
     print(f"  Latency: {'✅ PASS' if metrics.latency_p95_ms < 10 else '❌ FAIL'}")
 
     overall_pass = (
-        metrics.bypass_rate < 0.10 and
+        metrics.raw_bypass_rate < 0.10 and
+        metrics.semantic_preserving_bypass_rate < 0.10 and
         metrics.false_positive_rate < 0.05 and
         metrics.latency_p95_ms < 10
     )

@@ -10,6 +10,7 @@ Target Release: 1.5.4 (May 11, 2026)
 import base64
 import json
 import random
+import shlex
 from typing import List, Dict, Optional
 from dataclasses import dataclass
 from enum import Enum
@@ -17,6 +18,7 @@ from enum import Enum
 
 class VariantType(Enum):
     """Types of semantic-preserving transformations."""
+    BASE = "base"
     BASE64_ENCODE = "base64_encode"
     HEX_ENCODE = "hex_encode"
     COMMAND_SUBSTITUTION = "command_substitution"
@@ -37,12 +39,17 @@ class AttackVariant:
     variant_type: VariantType
     command: str
     description: str
+    semantic_preserving: bool
+    semantic_notes: str
 
 
 @dataclass
 class AttackResult:
     """Result of testing one attack variant."""
     variant_id: str
+    variant_type: str
+    semantic_preserving: bool
+    semantic_notes: str
     mvar_decision: str  # "allow", "block", "error"
     execution_occurred: bool
     latency_ms: float
@@ -84,7 +91,7 @@ class AdaptiveAttacker:
             List of AttackVariant objects
         """
         variants = []
-        variant_types = list(VariantType)
+        variant_types = [v for v in VariantType if v != VariantType.BASE]
 
         # Ensure we use each variant type at least once if count >= 10
         if count >= len(variant_types):
@@ -96,80 +103,73 @@ class AdaptiveAttacker:
             selected_types = self.rng.sample(variant_types, count)
 
         for i, vtype in enumerate(selected_types):
-            variant_cmd = self._apply_transformation(base_command, vtype)
+            variant_cmd, semantic_preserving, semantic_notes = self._apply_transformation(base_command, vtype)
             variants.append(AttackVariant(
                 variant_id=f"{base_command[:20]}_var_{i:02d}",
                 base_attack_id=base_command[:20],
                 variant_type=vtype,
                 command=variant_cmd,
-                description=f"Applied {vtype.value} transformation"
+                description=f"Applied {vtype.value} transformation",
+                semantic_preserving=semantic_preserving,
+                semantic_notes=semantic_notes,
             ))
 
         return variants
 
-    def _apply_transformation(self, command: str, vtype: VariantType) -> str:
+    def _apply_transformation(self, command: str, vtype: VariantType) -> tuple[str, bool, str]:
         """Apply a specific transformation to create a variant."""
 
         if vtype == VariantType.BASE64_ENCODE:
             # Encode command in base64, wrap in decode+execute
             encoded = base64.b64encode(command.encode()).decode()
-            return f"echo {encoded} | base64 -d | bash"
+            return f"echo {encoded} | base64 -d | bash", True, "encoded payload decoded and executed"
 
         elif vtype == VariantType.HEX_ENCODE:
             # Hex encode command
             hex_cmd = command.encode().hex()
-            return f"echo {hex_cmd} | xxd -r -p | bash"
+            return f"echo {hex_cmd} | xxd -r -p | bash", True, "hex payload decoded and executed"
 
         elif vtype == VariantType.COMMAND_SUBSTITUTION:
             # Use $() instead of direct execution
-            return f"eval $(echo {command})"
+            return f"eval $(echo {shlex.quote(command)})", True, "eval command-substitution wrapper"
 
         elif vtype == VariantType.QUOTE_VARIATION:
-            # Vary quoting style
-            styles = [
-                f'"{command}"',
-                f"'{command}'",
-                command.replace(" ", "\\ "),
-            ]
-            return self.rng.choice(styles)
+            # Execute through bash -lc with quoted command payload.
+            return f"bash -lc {shlex.quote(command)}", True, "bash -lc quoted payload wrapper"
 
         elif vtype == VariantType.PATH_VARIATION:
             # Vary path representation
             command = command.replace("/tmp", "$TMPDIR")
             command = command.replace("~", "$HOME")
-            return command
+            return command, True, "path aliases via env vars"
 
         elif vtype == VariantType.WHITESPACE_INJECTION:
             # Inject extra whitespace/newlines
-            return command.replace(" ", "  ").replace(";", " \n ")
+            return command.replace(" ", "  ").replace(";", " \n "), True, "whitespace/newline normalization evasion"
 
         elif vtype == VariantType.ENVIRONMENT_VAR:
             # Use environment variable expansion
-            return command.replace("rm", "${RM:-rm}")
+            return command.replace("rm", "${RM:-rm}"), True, "environment indirection for command names"
 
         elif vtype == VariantType.REDIRECT_VARIATION:
-            # Vary redirect syntax
+            # Keep redirection semantics stable by making stdout fd explicit.
+            if ">>" in command:
+                return command.replace(">>", "1>>", 1), True, "explicit stdout append fd"
             if ">" in command:
-                parts = command.split(">")
-                return f"{parts[0]} -o {parts[1].strip()}"
-            return command
+                return command.replace(">", "1>", 1), True, "explicit stdout fd"
+            return command, True, "no redirect present; unchanged"
 
         elif vtype == VariantType.GLOB_PATTERN:
             # Vary glob patterns
-            command = command.replace("*", "./*")
-            command = command.replace("rm /", "rm ./")
-            return command
+            transformed = command.replace(" *", " ./*").replace("/*", "/**/*")
+            return transformed, False, "glob rewrite may broaden/narrow match set"
 
         elif vtype == VariantType.LOGICAL_OPERATOR:
-            # Vary logical operators
-            if "&&" in command:
-                return command.replace("&&", ";")
-            elif ";" in command:
-                return command.replace(";", " && ")
-            return command + " ; echo done"
+            # Keep original command semantics and append harmless suffix.
+            return f"{command} ; true", True, "logical no-op suffix"
 
         else:
-            return command
+            return command, False, "unknown transformation"
 
     def test_variant(self, variant: AttackVariant) -> AttackResult:
         """
@@ -203,6 +203,9 @@ class AdaptiveAttacker:
 
             return AttackResult(
                 variant_id=variant.variant_id,
+                variant_type=variant.variant_type.value,
+                semantic_preserving=variant.semantic_preserving,
+                semantic_notes=variant.semantic_notes,
                 mvar_decision=mvar_decision,
                 execution_occurred=execution_occurred,
                 latency_ms=latency_ms,
@@ -213,6 +216,9 @@ class AdaptiveAttacker:
             latency_ms = (time.perf_counter() - start) * 1000
             return AttackResult(
                 variant_id=variant.variant_id,
+                variant_type=variant.variant_type.value,
+                semantic_preserving=variant.semantic_preserving,
+                semantic_notes=variant.semantic_notes,
                 mvar_decision="error",
                 execution_occurred=True,  # Fail-open = bypass
                 latency_ms=latency_ms,
@@ -248,9 +254,11 @@ class AdaptiveAttacker:
         base_variant = AttackVariant(
             variant_id=f"{base_attack[:20]}_base",
             base_attack_id=base_attack[:20],
-            variant_type=VariantType.BASE64_ENCODE,  # Placeholder
+            variant_type=VariantType.BASE,
             command=base_attack,
-            description="Base attack (no transformation)"
+            description="Base attack (no transformation)",
+            semantic_preserving=True,
+            semantic_notes="reference base command",
         )
 
         base_result = self.test_variant(base_variant)

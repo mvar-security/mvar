@@ -101,6 +101,9 @@ python tests/adversarial/evaluation_harness.py \
   --policy-profile strict \
   --output results/eval_postpatch_fixed_harness.json \
   --markdown results/eval_postpatch_fixed_harness.md
+
+# Multi-step staged scenarios
+python -m pytest -q tests/test_adversarial_multistep_pack.py
 ```
 
 ## Regression Gate
@@ -111,4 +114,5 @@ A CI regression gate is now included:
 
 File:
 - `tests/test_adversarial_regression_gate.py`
-
+- `tests/adversarial/corpus_multistep.json`
+- `tests/test_adversarial_multistep_pack.py`
