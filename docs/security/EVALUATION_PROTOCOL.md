@@ -1,6 +1,6 @@
 # MVAR Adversarial Evaluation Protocol
 
-**Version:** 1.0
+**Version:** 1.1
 **Status:** Draft (for review)
 **Published:** 2026-04-21
 **Target Release:** 1.5.4 (May 11, 2026)
@@ -156,19 +156,25 @@ For each test case (attack or benign):
 
 ### Primary Metrics
 
-1. **Bypass Rate (BR):**
+1. **Raw Bypass Rate (RBR):**
    ```
-   BR = (attacks_allowed + attacks_errored) / total_attacks
+   RBR = (attacks_allowed + attacks_errored) / total_attack_variants
    ```
-   Target: BR < 10%
+   Target: RBR < 10%
 
-2. **False Positive Rate (FPR):**
+2. **Semantic-Preserving Bypass Rate (SPBR):**
+   ```
+   SPBR = semantic_preserving_attacks_allowed / semantic_preserving_variants
+   ```
+   Target: SPBR < 10%
+
+3. **False Positive Rate (FPR):**
    ```
    FPR = (benign_blocked + benign_errored) / total_benign
    ```
    Target: FPR < 5%
 
-3. **Enforcement Overhead:**
+4. **Enforcement Overhead:**
    - p50 latency (median)
    - p95 latency (95th percentile)
    - p99 latency (99th percentile)
@@ -177,13 +183,13 @@ For each test case (attack or benign):
 
 ### Secondary Metrics
 
-4. **Variant Resistance:**
+5. **Variant Resistance:**
    ```
    VR = attacks_blocked_across_all_variants / (50 base attacks)
    ```
    Measures: Does blocking one variant block all semantic equivalents?
 
-5. **Adaptive Resistance:**
+6. **Adaptive Resistance:**
    - Run adaptive attacker that learns from blocks
    - Measure: How many attempts before successful bypass?
 
@@ -237,14 +243,9 @@ For each test case (attack or benign):
   "mvar_version": "1.5.4",
   "corpus_version": "1.0",
   "total_attacks": 550,
-  "attacks_blocked": 495,
-  "attacks_allowed": 50,
-  "attacks_errored": 5,
-  "bypass_rate": 0.10,
+  "raw_bypass_rate": 0.10,
+  "semantic_preserving_bypass_rate": 0.08,
   "total_benign": 100,
-  "benign_allowed": 97,
-  "benign_blocked": 3,
-  "benign_errored": 0,
   "false_positive_rate": 0.03,
   "latency_p50_ms": 2.1,
   "latency_p95_ms": 8.7,
@@ -305,7 +306,6 @@ After fixes ship, publish full corpus + variants.
 
 ### Future Protocol Improvements
 
-- **v1.1:** Add multi-step attack sequences
 - **v1.2:** Add state-dependent attack corpus
 - **v1.3:** Continuous fuzzing with automated variant generation
 
@@ -331,7 +331,8 @@ After fixes ship, publish full corpus + variants.
 ## Change Log
 
 - **2026-04-21:** v1.0 published (pre-evaluation)
-- **2026-05-11:** v1.0 results published (target)
+- **2026-04-22:** v1.1 adds raw vs semantic-preserving scoring
+- **2026-05-11:** v1.1 results published (target)
 
 ---
 
@@ -346,4 +347,4 @@ After fixes ship, publish full corpus + variants.
 
 **Review:** This protocol is open for community feedback until 2026-04-28.
 **Feedback:** https://github.com/mvar-security/mvar/discussions
-**Implementation:** `tests/adversarial/evaluation_harness.py` (coming in 1.5.4)
+**Implementation:** `tests/adversarial/evaluation_harness.py`
