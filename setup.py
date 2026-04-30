@@ -37,7 +37,7 @@ setup(
     python_requires=">=3.10",
     install_requires=[
         "numpy>=1.26.0,<3.0.0",
-        "cryptography==46.0.7",
+        "cryptography==47.0.0",
         "prometheus-client>=0.20.0,<1.0.0",
         "opentelemetry-api>=1.24.0,<2.0.0",
         "opentelemetry-sdk>=1.24.0,<2.0.0",
