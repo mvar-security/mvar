@@ -63,6 +63,9 @@ class ExecutionDecision:
     # advanced risk-scoring snapshot included in signed witness payload
     continuity_metadata: Optional[dict[str, Any]] = None
     # P1 continuity metadata: continuity_hash, protocol_version, constitutional_classification
+    witness_public_key: Optional[str] = None
+    # raw Ed25519 public key hex that verifies witness_signature; None for HMAC
+    # (symmetric) signatures. Lets downstream verifiers perform a real signature check.
 
 
 class ExecutionGovernor:
@@ -1182,6 +1185,14 @@ class ExecutionGovernor:
             }
         )
         signature = f"{seal.algorithm}:{seal.signature_hex}"
+        # Expose the verifying public key for Ed25519 seals so downstream verifiers
+        # (e.g. ClawZero witness verify) can perform a real signature check. HMAC
+        # seals are symmetric and have no distributable public key.
+        witness_public_key = (
+            seal.public_key_hex
+            if str(seal.algorithm).lower().startswith("ed25519")
+            else None
+        )
 
         return ExecutionDecision(
             decision=decision,
@@ -1189,6 +1200,7 @@ class ExecutionGovernor:
             policy_id=f"mvar-security.v{self.get_version()}",
             engine="mvar-security",
             witness_signature=signature,
+            witness_public_key=witness_public_key,
             provenance=provenance,
             evaluation_trace=effective_trace,
             enforcement_action=enforcement_action,
