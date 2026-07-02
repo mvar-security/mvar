@@ -1189,8 +1189,8 @@ class ExecutionGovernor:
         # (e.g. ClawZero witness verify) can perform a real signature check. HMAC
         # seals are symmetric and have no distributable public key.
         witness_public_key = (
-            seal.public_key_hex
-            if str(seal.algorithm).lower().startswith("ed25519")
+            getattr(seal, "public_key_hex", None)
+            if str(getattr(seal, "algorithm", "")).lower().startswith("ed25519")
             else None
         )
 

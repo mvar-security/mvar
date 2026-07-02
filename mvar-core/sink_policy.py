@@ -28,11 +28,13 @@ import hashlib
 import hmac
 import base64
 import binascii
+import ipaddress
 import json
 import logging
 import os
 import re
 import shlex
+import socket
 from dataclasses import dataclass, field
 from datetime import datetime, timezone, timedelta
 from enum import Enum
@@ -84,6 +86,79 @@ except ImportError:
 
 
 _LOGGER = logging.getLogger("mvar.sink_policy")
+
+
+def _ip_is_blocked(ip: "ipaddress._BaseAddress") -> Optional[str]:
+    """Return a reason string if an IP is in a range that must never be an egress target.
+
+    Covers private, loopback, link-local (incl. cloud metadata 169.254.169.254),
+    reserved, unspecified (0.0.0.0 / ::), and multicast — for both IPv4 and IPv6, and
+    IPv4-mapped IPv6. Replaces the previous string-prefix check that missed
+    169.254.0.0/16, 172.16.0.0/12, IPv6 loopback, and encoded IPs.
+    """
+    # Unwrap IPv4-mapped IPv6 (e.g. ::ffff:169.254.169.254) to its IPv4 form.
+    mapped = getattr(ip, "ipv4_mapped", None)
+    if mapped is not None:
+        ip = mapped
+    if ip.is_private:
+        return f"private range ({ip})"
+    if ip.is_loopback:
+        return f"loopback ({ip})"
+    if ip.is_link_local:
+        return f"link-local/metadata ({ip})"
+    if ip.is_reserved:
+        return f"reserved ({ip})"
+    if ip.is_unspecified:
+        return f"unspecified ({ip})"
+    if ip.is_multicast:
+        return f"multicast ({ip})"
+    return None
+
+
+def _egress_hostname_is_private(hostname: str, *, resolve_dns: Optional[bool] = None) -> Optional[str]:
+    """Return a reason if an egress hostname is (or, optionally, resolves to) a blocked IP.
+
+    DETERMINISTIC by default (no DNS): a literal IP in any notation ipaddress accepts
+    (incl. decimal/hex/IPv4-mapped-IPv6) is checked directly against the blocked-range set
+    (private, loopback, link-local/metadata 169.254.169.254, reserved, unspecified,
+    multicast). Hostnames are governed by the allowlist mechanism, not by resolution — this
+    keeps policy decisions deterministic (a core MVAR guarantee) and avoids a network call
+    in the hot path.
+
+    Optional active DNS resolution (opt-in via resolve_dns=True or MVAR_EGRESS_RESOLVE_DNS=1)
+    additionally resolves names and blocks any that map to an internal address, defeating
+    DNS-rebinding-style SSRF, at the cost of determinism/latency. Off by default.
+    """
+    host = (hostname or "").strip().strip("[]")  # strip IPv6 brackets
+    if not host:
+        return "empty hostname"
+
+    # 1) Literal IP (deterministic, always checked).
+    try:
+        ip = ipaddress.ip_address(host)
+        return _ip_is_blocked(ip)
+    except ValueError:
+        pass
+
+    # 2) Optional DNS resolution (opt-in; non-deterministic, network-dependent).
+    if resolve_dns is None:
+        resolve_dns = os.environ.get("MVAR_EGRESS_RESOLVE_DNS", "").strip().lower() in {"1", "true", "yes"}
+    if not resolve_dns:
+        return None  # hostname governed by the allowlist, not by resolution
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except (socket.gaierror, socket.herror, OSError, UnicodeError):
+        return f"unresolvable egress host denied (fail-closed): {host}"
+    for info in infos:
+        addr = info[4][0]
+        try:
+            ip = ipaddress.ip_address(addr.split("%")[0])  # strip IPv6 zone id
+        except ValueError:
+            continue
+        reason = _ip_is_blocked(ip)
+        if reason:
+            return f"{host} -> {reason}"
+    return None
 
 
 class SinkRisk(Enum):
@@ -1109,8 +1184,9 @@ class SinkPolicy:
             hostname = (parsed.hostname or "").lower()
             if not hostname:
                 return "missing egress hostname"
-            if hostname in {"localhost", "127.0.0.1"} or hostname.startswith("10.") or hostname.startswith("192.168."):
-                return f"private egress target denied: {hostname}"
+            private_reason = _egress_hostname_is_private(hostname)
+            if private_reason:
+                return f"private egress target denied: {private_reason}"
             allowed_domains = self._effective_http_allowlist(sink)
             if self.http_default_deny and not allowed_domains:
                 return "http egress allowlist required (set MVAR_HTTP_ALLOWLIST)"
