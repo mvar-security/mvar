@@ -29,6 +29,45 @@ from mvar_core.credential_vault import CredentialVaultClient
 _LOGGER = logging.getLogger("mvar.governor")
 
 
+# ---------------------------------------------------------------------------
+# Constitutional advisory provider registry (public/private boundary).
+#
+# The public MVAR governor does NOT hardcode any private-brain module. Advisory
+# constitutional checks are OPTIONAL providers registered at runtime — either via the
+# MVAR_CCL_ADVISORY_MODULES env var (JSON list of specs) or programmatically by a private
+# consumer via register_ccl_advisory_modules(). If none are registered, the advisory layer
+# simply finds no violations (it is advisory, not the enforcement core). This keeps public
+# MVAR free of references to any private identity/emotion/cognition module.
+# ---------------------------------------------------------------------------
+
+_CCL_ADVISORY_SPECS: list[dict[str, Any]] = []
+
+
+def register_ccl_advisory_modules(specs: list[dict[str, Any]]) -> None:
+    """Register constitutional-advisory provider specs at runtime (called by private consumers).
+
+    Each spec: {"module": "<import.path>", "class": "<ClassName>", "method": "<method>",
+    "label": "<name>", optionally "detect_keys", "violations_key", "positional_context"}.
+    The public package ships an EMPTY registry; only a private consumer supplies module paths.
+    """
+    _CCL_ADVISORY_SPECS.extend(specs)
+
+
+def _resolve_ccl_advisory_specs() -> list[dict[str, Any]]:
+    """Return advisory specs from the runtime registry plus the MVAR_CCL_ADVISORY_MODULES env."""
+    specs = list(_CCL_ADVISORY_SPECS)
+    raw = os.environ.get("MVAR_CCL_ADVISORY_MODULES", "").strip()
+    if raw:
+        try:
+            import json as _json
+            env_specs = _json.loads(raw)
+            if isinstance(env_specs, list):
+                specs.extend(s for s in env_specs if isinstance(s, dict) and s.get("module"))
+        except Exception:
+            _LOGGER.warning("MVAR_CCL_ADVISORY_MODULES is not valid JSON; ignoring")
+    return specs
+
+
 @dataclass
 class ExecutionDecision:
     decision: str
@@ -619,97 +658,32 @@ class ExecutionGovernor:
                 import_failures.append(module_name)
             logging.warning("CCL advisory: %s check failed: %s", module_name, error)
 
-        # 1. Forbidden Claims Filter
-        try:
-            claims_mod = importlib.import_module("mirra_core.consciousness.forbidden_claims_filter")
-            claims_filter = claims_mod.ForbiddenClaimsFilter()
-            claims_result = claims_filter.scan(text_to_analyze, context)
-            if claims_result.get("violation_detected") or claims_result.get("should_block"):
-                for violation in claims_result.get("violations", []):
-                    violation_type = violation.get("category") or violation.get("type", "unknown")
-                    violations.append(
-                        {
-                            "module": "forbidden_claims_filter",
-                            "type": violation_type,
-                            "severity": violation.get("severity", "moderate"),
-                            "message": violation.get("message", "Forbidden claim detected"),
-                            "categories": claims_result.get("categories_violated", []),
-                        }
-                    )
-        except Exception as e:
-            _mark_degraded("forbidden_claims_filter", e)
-
-        # 2. Truth Classifier
-        try:
-            truth_mod = importlib.import_module("mirra_core.consciousness.truth_classifier")
-            truth_classifier = truth_mod.TruthClassifier()
-            truth_result = truth_classifier.classify_text(text_to_analyze, context)
-            if truth_result.get("violations"):
-                for violation in truth_result["violations"]:
-                    violations.append(
-                        {
-                            "module": "truth_classifier",
-                            "type": violation.get("type", "unvalidated_claim"),
-                            "severity": violation.get("severity", "moderate"),
-                            "message": violation.get("message", "Unvalidated factual claim"),
-                        }
-                    )
-        except Exception as e:
-            _mark_degraded("truth_classifier", e)
-
-        # 3. Phenomenology Gate
-        try:
-            phenom_mod = importlib.import_module("mirra_core.consciousness.phenomenology_gate")
-            phenom_gate = phenom_mod.PhenomenologyGate()
-            phenom_result = phenom_gate.check(text_to_analyze, context)
-            if phenom_result.get("violation_detected"):
-                for violation in phenom_result.get("violations", []):
-                    violations.append(
-                        {
-                            "module": "phenomenology_gate",
-                            "type": violation.get("type", "phenomenology_violation"),
-                            "severity": violation.get("severity", "moderate"),
-                            "message": violation.get("message", "First-person language violation"),
-                        }
-                    )
-        except Exception as e:
-            _mark_degraded("phenomenology_gate", e)
-
-        # 4. Drift Detector
-        try:
-            drift_mod = importlib.import_module("mirra_core.consciousness.drift_detector")
-            drift_detector = drift_mod.DriftDetector()
-            drift_result = drift_detector.detect(text_to_analyze, context=context)
-            if drift_result.get("drift_detected"):
-                for drift_event in drift_result.get("drift_events", []):
-                    violations.append(
-                        {
-                            "module": "drift_detector",
-                            "type": drift_event.get("drift_type", "epistemic_drift"),
-                            "severity": drift_event.get("severity", "moderate"),
-                            "message": drift_event.get("description", "Epistemic drift detected"),
-                        }
-                    )
-        except Exception as e:
-            _mark_degraded("drift_detector", e)
-
-        # 5. Limit Governor
-        try:
-            limit_mod = importlib.import_module("mirra_core.consciousness.limit_governor")
-            limit_governor = limit_mod.LimitGovernor()
-            limit_result = limit_governor.check_limits(text_to_analyze, context=context)
-            if limit_result.get("violation_detected"):
-                for violation in limit_result.get("violations", []):
-                    violations.append(
-                        {
-                            "module": "limit_governor",
-                            "type": violation.get("limit_type", "limit_exceeded"),
-                            "severity": violation.get("severity", "moderate"),
-                            "message": violation.get("message", "Interaction limit exceeded"),
-                        }
-                    )
-        except Exception as e:
-            _mark_degraded("limit_governor", e)
+        # Constitutional advisory checks are supplied by OPTIONAL, externally-registered
+        # provider modules — the public MVAR governor names none of them directly, keeping
+        # the public/private boundary clean (a private brain may register its own modules
+        # via MVAR_CCL_ADVISORY_MODULES or register_ccl_advisory_modules()). Each provider
+        # is a "module_path:ClassName:method:result_shape" spec; absent providers simply
+        # mean no advisory violations (this layer is advisory, not the enforcement core).
+        for spec in _resolve_ccl_advisory_specs():
+            module_path = spec["module"]
+            try:
+                mod = importlib.import_module(module_path)
+                checker = getattr(mod, spec["class"])()
+                method = getattr(checker, spec["method"])
+                result = method(text_to_analyze, context) if spec.get("positional_context", True) else method(text_to_analyze, context=context)
+                detected = any(result.get(k) for k in spec.get("detect_keys", ("violation_detected",)))
+                if detected:
+                    for violation in result.get(spec.get("violations_key", "violations"), []):
+                        violations.append(
+                            {
+                                "module": spec.get("label", module_path.rsplit(".", 1)[-1]),
+                                "type": violation.get("type") or violation.get("category", "violation"),
+                                "severity": violation.get("severity", "moderate"),
+                                "message": violation.get("message") or violation.get("description", "Advisory violation"),
+                            }
+                        )
+            except Exception as e:
+                _mark_degraded(spec.get("label", module_path), e)
 
         # Classify result
         if not violations:
