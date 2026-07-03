@@ -35,6 +35,16 @@ Detailed release notes live under `docs/releases/*`.
 
 ---
 
+## [1.5.4] - 2026-07-03
+
+### Fixed
+- Trust tracker no longer prints an unconditional stdout notice at import
+  ("QSEAL external signer not detected"); it referred to the internal
+  trust-score ledger, not execution witnesses, and misled users into thinking
+  Ed25519 witness signing had degraded. Now a debug-level log with clarified
+  wording. Witness signing behavior unchanged: Ed25519 whenever `cryptography`
+  is installed.
+
 ## [1.5.3] - 2026-07-03
 
 ### Added
