@@ -2,7 +2,7 @@
 
 **Last updated:** 2026-07-02 (hand-corrected; the generator script reads a stale cached
 results file and under-reports — see note at bottom)
-**Version:** 1.5.2 (source); v1.5.3 tag exists but was never published to PyPI (latest PyPI = 1.5.2)
+**Version:** 1.5.4 (source); v1.5.3 tag exists but was never published to PyPI (latest PyPI = 1.5.4)
 **Branch:** working/adversarial-gate-measurements
 
 ## Attack Corpus Coverage (corpus v2 — the current 60-attack pack)
