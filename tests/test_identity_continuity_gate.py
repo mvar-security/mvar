@@ -50,6 +50,11 @@ def governor():
     # environment afterwards (suite convention, see test_api_contracts.py).
     original_env = os.environ.copy()
     try:
+        # Signing needs a QSEAL secret; without one the fail-closed
+        # allow-path blocks (by design), which is not what these tests
+        # assert. Suite convention: tests set their own test secret
+        # (see test_witness_verifier.py). setdefault keeps a real one.
+        os.environ.setdefault("QSEAL_SECRET", "unit-test-secret")
         yield ExecutionGovernor(policy_profile="dev_balanced")
     finally:
         os.environ.clear()
