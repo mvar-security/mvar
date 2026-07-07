@@ -1,0 +1,21 @@
+name: Public/Private Boundary Gate
+
+# Fails the build if MIRRA EOS private-brain concepts leak into this PUBLIC package.
+# See EVAL/04_TARGET_ARCHITECTURE.md §6 and hard rule 3.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  boundary-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Scan public package for private-brain leaks
+        run: |
+          python scripts/check_public_private_boundary.py mvar mvar-core

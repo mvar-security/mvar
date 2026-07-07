@@ -38,6 +38,10 @@ from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, field
 
+import logging
+
+_logger = logging.getLogger(__name__)
+
 # Deterministic local HMAC fallback for stable cross-env behavior.
 verify_entry = None
 _external_sign_entry = None
@@ -45,9 +49,13 @@ _external_sign_entry = None
 QSEAL_MODE = "hmac-sha256"
 
 if QSEAL_MODE == "hmac-sha256":
-    print(
-        "ℹ️  QSEAL external signer not detected — trust tracker uses HMAC-SHA256 fallback "
-        "(runtime policy traces may still show local Ed25519 signer)"
+    # Informational only, and about the TRUST-SCORE ledger, not the execution
+    # witness (DecisionRecord witnesses are Ed25519 whenever `cryptography` is
+    # installed — see qseal.QSealSigner). A stdout print here confused users
+    # into thinking witness signing had degraded; keep it at debug level.
+    _logger.debug(
+        "QSEAL external signer not detected — trust tracker uses HMAC-SHA256 fallback "
+        "(execution witnesses are unaffected and use Ed25519 when available)"
     )
 
 

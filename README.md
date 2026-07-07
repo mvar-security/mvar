@@ -71,7 +71,7 @@ safe_tool = protect(my_tool)
 
 Invariant: UNTRUSTED input + CRITICAL sink → BLOCK
 
-`50 attack vectors blocked` · `200 benign vectors passed` · `CI-gated launch validation`
+`60 attack vectors blocked` · `100 benign vectors passed` · `CI-gated launch validation`
 
 ## Try It In 30 Seconds
 
@@ -81,7 +81,7 @@ Canonical proof runbook: [RUN_THE_PROOF.md](RUN_THE_PROOF.md)
 [![Launch Gate](https://github.com/mvar-security/mvar/actions/workflows/launch-gate.yml/badge.svg)](https://github.com/mvar-security/mvar/actions/workflows/launch-gate.yml)
 [![PyPI version](https://badge.fury.io/py/mvar-security.svg)](https://badge.fury.io/py/mvar-security)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/mvar-security/mvar/badge)](https://scorecard.dev/viewer/?uri=github.com/mvar-security/mvar)
-[![Validation](https://img.shields.io/badge/Attack%20Vectors-50%20tested-brightgreen)](./)
+[![Validation](https://img.shields.io/badge/Attack%20Vectors-60%20tested-brightgreen)](./)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE.md)
 
 ---
@@ -156,7 +156,7 @@ Most defenses attempt to detect malicious prompts. MVAR enforces policy at execu
 
 ## Validation
 
-- 50 prompt-injection attack vectors blocked before tool execution
+- 60 prompt-injection attack vectors blocked before tool execution
 - Governed runtime CI gate on every change
 - Reproducibility and launch checks in versioned scripts
 
@@ -252,7 +252,7 @@ bash scripts/run-python.sh scripts/update_status_md.py
 
 What this proves:
 - Launch gate and full suite are green in CI
-- Attack corpus blocks 50/50 under current policy
+- Attack corpus: 60 vectors, 0.19% semantic bypass (1 residual), 0.00% false positives
 - Benign corpus has zero false blocks
 - Exact current numbers are published in [STATUS.md](STATUS.md)
 - Repro artifact pack is emitted under `artifacts/repro/<timestamp>/` with checksums and summary JSON
@@ -307,21 +307,9 @@ MVAR has validated enforcement against these attack classes:
 See [STATUS.md](STATUS.md) for exact current validation numbers.
 
 <details>
-<summary><strong>What does MVAR block?</strong> 50 attack vectors · 9 categories · CI-gated on every commit</summary>
+<summary><strong>What does MVAR block?</strong> 60 attack vectors · 6 categories · CI-gated on every commit</summary>
 
-MVAR's sink policy was evaluated against a 50-vector adversarial corpus spanning 9 attack categories:
-
-| Category | Vectors | Result |
-|----------|---------|--------|
-| Direct command injection | 6 | ✅ 6/6 blocked |
-| Environment variable attacks | 5 | ✅ 5/5 blocked |
-| Encoding/obfuscation (Base64, Unicode, hex) | 8 | ✅ 8/8 blocked |
-| Shell manipulation (pipes, eval, substitution) | 7 | ✅ 7/7 blocked |
-| Multi-stage attacks (download+execute) | 6 | ✅ 6/6 blocked |
-| Taint laundering (cache, logs, temp files) | 5 | ✅ 5/5 blocked |
-| Template escaping (JSON, XML, Markdown) | 5 | ✅ 5/5 blocked |
-| Credential theft (AWS, SSH keys) | 4 | ✅ 4/4 blocked |
-| Novel corpus variants | 4 | ✅ 4/4 blocked |
+Corpus v2: 60 attack vectors across 6 categories (10 each): data_exfiltration, destructive_operations, privilege_escalation, lateral_movement, credential_harvesting, remote_code_execution. Full per-vector results in results/adversarial_eval_corpus_v2.1_patched.md.
 
 **Result:** Blocked every vector in the current validation corpus under the tested policy and sink configuration.
 

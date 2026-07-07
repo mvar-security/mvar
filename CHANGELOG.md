@@ -3,6 +3,56 @@
 All notable changes to MVAR are documented here.
 Detailed release notes live under `docs/releases/*`.
 
+## [Unreleased] - Corpus v2 Adversarial Evaluation
+
+**Date:** 2026-04-29
+**Status:** Evaluation complete, awaiting decision on remediation before 1.5.4 release
+
+### Adversarial Testing
+- **Expanded attack corpus from 50 to 60 attacks** — Added 10 remote code execution (RCE) variants covering `curl | bash`, `wget | sh`, `eval "$(curl ..."`, and `source <(curl ...)` patterns
+- **Discovered corpus coverage gap** — Original v1 corpus had zero RCE attacks, leading to understated bypass rate
+- **Corpus v2 bypass rate: 2.41%** (13/540 semantic-preserving variants) — up from 0.2% in v1
+- **False positive rate: 0.00%** (0/100 benign commands) — unchanged
+- **p95 latency: 0.13ms** — unchanged
+
+### Known Bypasses Identified
+- **RCE_007** (`eval "$(curl ...)"`): 6/9 semantic bypasses (66.67%)
+- **RCE_010** (`source <(curl ...)`): 6/9 semantic bypasses (66.67%)
+- **LATERAL_005** (NFS mount with quote variation): 1/9 semantic bypasses (11.11%)
+
+### Documentation
+- **Added:** [docs/security/CORPUS_V2_RESULTS.md](docs/security/CORPUS_V2_RESULTS.md) — Full evaluation report with v1-to-v2 comparison
+- **Updated:** [docs/security/KNOWN_BYPASSES.md](docs/security/KNOWN_BYPASSES.md) — Detailed bypass analysis with remediation checklist
+- **Updated:** Attack corpus at `tests/adversarial/corpus_attacks.json` (60 attacks, SHA256: `6fd51de9...`)
+
+### Attribution
+- Bypass discovery credit: **ChatGPT (Codex)** — Independent testing on 2026-04-22 found `curl -fsSL ... | bash` pattern missing from original corpus
+
+### Next Steps (Before 1.5.4)
+1. Add policy rules for `eval "$(curl ...)"` and `source <(curl ...)` patterns
+2. Re-run corpus v2 evaluation to measure post-patch bypass rate
+3. Decision: Release with current 2.41% bypass rate OR patch first
+
+---
+
+## [1.5.4] - 2026-07-03
+
+### Fixed
+- Trust tracker no longer prints an unconditional stdout notice at import
+  ("QSEAL external signer not detected"); it referred to the internal
+  trust-score ledger, not execution witnesses, and misled users into thinking
+  Ed25519 witness signing had degraded. Now a debug-level log with clarified
+  wording. Witness signing behavior unchanged: Ed25519 whenever `cryptography`
+  is installed.
+
+## [1.5.3] - 2026-07-03
+
+### Added
+- Conformance adapter for the frozen MIRRA core contract v1 (`ExecutionAuthorizer`)
+- ipaddress-based egress SSRF denylist (loopback/private/link-local/reserved after resolution)
+- Ed25519 witness public key propagated on ExecutionDecision for third-party verification
+- Public/private boundary CI gate
+
 ## [1.5.3] - 2026-04-21 — Gap Closure Documentation (Honest Positioning)
 
 **Focus:** Credibility baseline - honest positioning, prior art evidence, Ed25519 roadmap
