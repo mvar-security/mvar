@@ -307,6 +307,18 @@ class ExecutionGovernor:
                     final_outcome=final_outcome,
                     evaluation_trace=evaluation_trace,
                 )
+                (
+                    decision,
+                    reason_code,
+                    enforcement_action,
+                    evaluation_trace,
+                ) = self._apply_identity_continuity_gate(
+                    prompt_provenance=prompt_provenance,
+                    decision=decision,
+                    reason_code=reason_code,
+                    enforcement_action=enforcement_action,
+                    evaluation_trace=evaluation_trace,
+                )
                 return self._build_decision(
                     decision=decision,
                     reason_code=reason_code,
@@ -439,6 +451,18 @@ class ExecutionGovernor:
             final_outcome=final_outcome,
             evaluation_trace=evaluation_trace,
         )
+        (
+            decision,
+            reason_code,
+            enforcement_action,
+            evaluation_trace,
+        ) = self._apply_identity_continuity_gate(
+            prompt_provenance=prompt_provenance,
+            decision=decision,
+            reason_code=reason_code,
+            enforcement_action=enforcement_action,
+            evaluation_trace=evaluation_trace,
+        )
 
         return self._build_decision(
             decision=decision,
@@ -554,6 +578,48 @@ class ExecutionGovernor:
         self._upsert_trace_entry(evaluation_trace, "rule_fired", reason_code)
         self._upsert_trace_entry(evaluation_trace, "final_outcome", final_outcome)
         return decision, reason_code, enforcement_action, final_outcome, evaluation_trace
+
+    def _apply_identity_continuity_gate(
+        self,
+        *,
+        prompt_provenance: dict[str, Any],
+        decision: str,
+        reason_code: str,
+        enforcement_action: Optional[str],
+        evaluation_trace: list[str],
+    ) -> tuple[str, str, Optional[str], list[str]]:
+        """Recognition gates automatic allows (opt-in identity continuity).
+
+        A caller that attaches an `identity_context` block to prompt provenance
+        (continuity-aware SDK edges do) opts the request into recognition
+        enforcement: an agent whose verified continuity is not established
+        never receives an automatic allow — allows elevate to step-up
+        (annotate + block_until_approved). Requests without identity_context
+        are unaffected. The block carries the SDK-verified fields
+        {continuity_verified, session_count, trust_established}; transport
+        integrity of the block is the calling edge's responsibility.
+        """
+        identity_context = (
+            prompt_provenance.get("identity_context")
+            if isinstance(prompt_provenance, dict)
+            else None
+        )
+        if not isinstance(identity_context, dict):
+            return decision, reason_code, enforcement_action, evaluation_trace
+        established = bool(identity_context.get("trust_established")) and bool(
+            identity_context.get("continuity_verified")
+        )
+        evaluation_trace.append(
+            f"identity_continuity={'established' if established else 'not_established'}"
+        )
+        if decision == "allow" and not established:
+            decision = "annotate"
+            reason_code = "CONTINUITY_NOT_ESTABLISHED"
+            enforcement_action = "block_until_approved"
+            evaluation_trace.append("continuity_elevation=step_up_required")
+            self._upsert_trace_entry(evaluation_trace, "rule_fired", reason_code)
+            self._upsert_trace_entry(evaluation_trace, "final_outcome", "STEP_UP")
+        return decision, reason_code, enforcement_action, evaluation_trace
 
     @staticmethod
     def _build_continuity_metadata(ccl_result: dict[str, Any] | None) -> Optional[dict[str, Any]]:
