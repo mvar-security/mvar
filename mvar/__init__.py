@@ -11,6 +11,14 @@ from mvar_core import __version__
 from mvar_core.profiles import PROFILE_ENV, SecurityProfile, create_default_runtime
 from mvar.governor import ExecutionDecision, ExecutionGovernor
 
+# Structural-dependency axis (spec: docs/specs/STRUCTURAL_ENFORCEMENT_SPEC.md).
+# Guarded import: if the analyzer package is absent or broken, enforcement
+# fails closed to the existing flat behavior — never crashes the wrap.
+try:
+    from mvar import structural as _structural
+except Exception:  # pragma: no cover - absence path exercised via monkeypatch
+    _structural = None
+
 
 class ExecutionBlocked(RuntimeError):
     """Raised when MVAR returns a BLOCK decision."""
@@ -68,6 +76,27 @@ def _infer_action(tool_name: str, explicit_action: Optional[str]) -> str:
     if normalized_tool in {"http", "https"}:
         return "post"
     return "execute"
+
+
+# What each declared action authorizes structurally. A tool declared as a
+# network poster is *expected* to reach an HTTP sink; a tool declared read-only
+# authorizes nothing sensitive, so any reachable sensitive sink is a
+# signature-implementation mismatch.
+_ACTION_STRUCTURAL_AUTHORIZED: Dict[str, frozenset] = {
+    "exec": frozenset({"proc.exec"}),
+    "run": frozenset({"proc.exec"}),
+    "post": frozenset({"net.http"}),
+    "get": frozenset({"net.http"}),
+    "put": frozenset({"net.http"}),
+    "delete": frozenset({"net.http"}),
+    "request": frozenset({"net.http"}),
+    "write": frozenset({"fs.write"}),
+    "access": frozenset({"cred.read"}),
+}
+
+
+def _authorized_for_action(action: str) -> frozenset:
+    return _ACTION_STRUCTURAL_AUTHORIZED.get(str(action).strip().lower(), frozenset())
 
 
 def _default_target_extractor(args: Tuple[Any, ...], kwargs: Dict[str, Any]) -> str:
@@ -182,6 +211,14 @@ def protect(
             source="protect-wrapper",
         )
 
+    # One-time structural derivation at the wrap moment (cached in the
+    # closure; zero per-call analysis cost). None => derivation absent =>
+    # the existing flat axes govern unchanged.
+    structural_context = (
+        _structural.derive_structural_context(tool_fn) if _structural is not None else None
+    )
+    structural_authorized = _authorized_for_action(resolved_action)
+
     @wraps(tool_fn)
     def _wrapped(*args: Any, **kwargs: Any) -> Any:
         target = resolved_target_extractor(args, kwargs)
@@ -205,6 +242,31 @@ def protect(
         decision_record = _to_decision_record(decision, mapped_profile)
 
         outcome = decision_record["outcome"]
+        if outcome == "ALLOW" and structural_context is not None and _structural is not None:
+            # Escalate-only: conditioned on a flat ALLOW, so a structural
+            # finding can never override or relax a block (never the taint
+            # law). Fires when the code is structurally wired to reach a
+            # sensitive sink the declared action never authorized.
+            finding = _structural.evaluate_structural(structural_context, structural_authorized)
+            if finding is not None:
+                trace_lines = _structural.evidence_trace_lines(structural_context, finding)
+                decision_record = dict(decision_record)
+                decision_record["reason"] = finding["code"]
+                decision_record["policy"] = dict(decision_record.get("policy") or {})
+                decision_record["policy"]["rulesEvaluated"] = list(
+                    decision_record["policy"].get("rulesEvaluated") or []
+                ) + trace_lines
+                decision_record["structural"] = {
+                    "classes": finding["classes"],
+                    "evidence": finding["evidence"],
+                    "reachable": sorted(structural_context.get("reachable_sinks") or {}),
+                    "dynamic_dispatch": bool(structural_context.get("dynamic_dispatch")),
+                }
+                if finding["severity"] == "block":
+                    decision_record["outcome"] = "BLOCK"
+                    raise ExecutionBlocked(finding["code"], decision_record)
+                decision_record["outcome"] = "STEP_UP"
+                raise StepUpRequired(finding["code"], decision_record)
         if outcome == "ALLOW":
             return tool_fn(*args, **kwargs)
         if outcome == "BLOCK":

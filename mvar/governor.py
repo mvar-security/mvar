@@ -463,6 +463,19 @@ class ExecutionGovernor:
             enforcement_action=enforcement_action,
             evaluation_trace=evaluation_trace,
         )
+        (
+            decision,
+            reason_code,
+            enforcement_action,
+            evaluation_trace,
+        ) = self._apply_structural_gate(
+            prompt_provenance=prompt_provenance,
+            sink_type=sink_type,
+            decision=decision,
+            reason_code=reason_code,
+            enforcement_action=enforcement_action,
+            evaluation_trace=evaluation_trace,
+        )
 
         return self._build_decision(
             decision=decision,
@@ -619,6 +632,86 @@ class ExecutionGovernor:
             evaluation_trace.append("continuity_elevation=step_up_required")
             self._upsert_trace_entry(evaluation_trace, "rule_fired", reason_code)
             self._upsert_trace_entry(evaluation_trace, "final_outcome", "STEP_UP")
+        return decision, reason_code, enforcement_action, evaluation_trace
+
+    # Structural axis: what each declared sink authorizes the implementation
+    # to be wired to reach. Deliberately self-contained (the governor never
+    # imports the analyzer package; it consumes a plain dict carried in
+    # prompt_provenance["structural"] — same transport as identity_context).
+    _STRUCTURAL_AUTHORIZED = {
+        "shell.exec": frozenset({"proc.exec"}),
+        "http.request": frozenset({"net.http"}),
+        "filesystem.write": frozenset({"fs.write"}),
+        "filesystem.read": frozenset(),
+        "credentials.access": frozenset({"cred.read"}),
+        "tool.custom": frozenset(),
+    }
+    _STRUCTURAL_CRITICAL = frozenset({"net.http", "proc.exec", "dyn.eval"})
+    _STRUCTURAL_STEP_UP = frozenset({"fs.write"})
+
+    def _apply_structural_gate(
+        self,
+        *,
+        prompt_provenance: dict[str, Any],
+        sink_type: str,
+        decision: str,
+        reason_code: str,
+        enforcement_action: Optional[str],
+        evaluation_trace: list[str],
+    ) -> tuple[str, str, Optional[str], list[str]]:
+        """Structural-dependency gate (fourth policy axis, escalate-only).
+
+        A request whose prompt provenance carries a ``structural`` block is
+        opted into derived-capability enforcement: when the executing code is
+        statically wired to reach a sensitive sink class the declared sink
+        never authorized (or its reachable-sink set has widened — capability
+        drift), an allow elevates to step-up. Requests without the block are
+        unaffected, and a structural finding never overrides a block —
+        a gate, never a bypass; never the taint law.
+        """
+        structural = (
+            prompt_provenance.get("structural")
+            if isinstance(prompt_provenance, dict)
+            else None
+        )
+        if not isinstance(structural, dict):
+            return decision, reason_code, enforcement_action, evaluation_trace
+        reachable = structural.get("reachable_sinks")
+        if not isinstance(reachable, dict):
+            reachable = {}
+        evaluation_trace.append(
+            "structural_reachable=" + (",".join(sorted(reachable)) if reachable else "none")
+        )
+        if structural.get("dynamic_dispatch"):
+            evaluation_trace.append("structural_dynamic_dispatch=cannot_bound_reachable_sinks")
+        if decision != "allow":
+            return decision, reason_code, enforcement_action, evaluation_trace
+
+        authorized = self._STRUCTURAL_AUTHORIZED.get(str(sink_type), frozenset())
+        unauthorized = {c: v for c, v in reachable.items() if c not in authorized}
+        firing = sorted(set(unauthorized) & self._STRUCTURAL_CRITICAL) or sorted(
+            set(unauthorized) & self._STRUCTURAL_STEP_UP
+        )
+        if firing:
+            new_reason = "STRUCTURAL_SINK_REACHABLE"
+        elif structural.get("capability_drift"):
+            new_reason = "STRUCTURAL_CAPABILITY_DRIFT"
+            firing = sorted(structural.get("new_sinks") or [])
+        else:
+            return decision, reason_code, enforcement_action, evaluation_trace
+
+        for cls in firing:
+            info = unauthorized.get(cls) if isinstance(unauthorized.get(cls), dict) else None
+            if info and info.get("path"):
+                evaluation_trace.append(
+                    f"structural_evidence={cls}:" + "→".join(str(p) for p in info["path"])
+                )
+        decision = "annotate"
+        reason_code = new_reason
+        enforcement_action = "block_until_approved"
+        evaluation_trace.append("structural_elevation=step_up_required")
+        self._upsert_trace_entry(evaluation_trace, "rule_fired", reason_code)
+        self._upsert_trace_entry(evaluation_trace, "final_outcome", "STEP_UP")
         return decision, reason_code, enforcement_action, evaluation_trace
 
     @staticmethod
