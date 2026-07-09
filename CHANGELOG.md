@@ -3,6 +3,22 @@
 All notable changes to MVAR are documented here.
 Detailed release notes live under `docs/releases/*`.
 
+## [1.7.0] - 2026-07-09
+
+### Added
+- **Structural-dependency-aware enforcement (spec v0.1)** — a fourth policy axis that
+  derives, at `protect()` wrap time, the set of sensitive sinks a tool's implementation is
+  *actually wired to reach* (multi-hop: `tool -> helper -> requests.post`) and gates on that
+  rather than on the tool's self-description. Pure `ast` reachability analysis over the tool's
+  own module — local-only, no network, no second model. Escalate-only and fail-closed to flat
+  enforcement; detects reachable-sink-set widening (capability drift) across re-wraps.
+  New package `mvar/structural/` (`analyzer`, `sinks`, derivation contract) + governor wiring;
+  12 dedicated tests. Scope is reachability, not full data-flow — dynamic dispatch is surfaced
+  as a flag, not a false all-clear; cross-module first-party helpers are out of v0.1 scope.
+
+### Changed
+- Archived 11 superseded planning/session/eval docs to `_archive/2026-07-legibility`.
+
 ## [Unreleased] - Corpus v2 Adversarial Evaluation
 
 **Date:** 2026-04-29
